@@ -295,61 +295,57 @@ async def private_states_handler(message: Message):
 
 
 # =====================================================================
-# 5. УНИВЕРСАЛЬНЫЙ ПЕРЕХВАТЧИК СОБЫТИЙ (RAW EVENTS)
+# 5. РАБОТА В БЕСЕДАХ (СБОР ЧАТОВ И ОБРАБОТКА СООБЩЕНИЙ)
 # =====================================================================
 
-@bot.on.raw_event()
-async def raw_event_handler(event):
-    try:
-        event_type = event.get("type")
-        obj = event.get("object", {})
+@bot.on.chat_message()
+async def chat_handler(message: Message):
+    peer_id = message.peer_id
+    cfg = load_config()
+    
+    # Автоматически сохраняем чат в базу при любой активности в беседе
+    if peer_id not in cfg["chats"]:
+        cfg["chats"].append(peer_id)
+        save_config(cfg)
+        print(f"📥 Добавлен новый чат через chat_message (peer_id: {peer_id})")
         
-        peer_id = None
-        if event_type == "message_new":
-            msg_obj = obj.get("message", {})
-            peer_id = msg_obj.get("peer_id")
-            
-            # Обработка @all / все
-            text = msg_obj.get("text", "").strip().lower()
-            if peer_id and peer_id > 2000000000 and text in ["@all", "все", "всем", "!all"]:
-                from_id = msg_obj.get("from_id")
-                try:
-                    members = await bot.api.messages.get_conversation_members(peer_id=peer_id)
-                    mentions = []
-                    for m in members.items:
-                        if m.member_id > 0 and len(mentions) < 30:
-                            mentions.append(f"[id{m.member_id}|•]")
-                    tag_string = " ".join(mentions)
-                    
-                    await bot.api.messages.send(
-                        peer_id=peer_id,
-                        message=f"📢 **ВНИМАНИЕ! ОБЩЕЕ УПОВЕЩЕНИЕ** 📢\n\n👤 Вызвал: [id{from_id}|Пользователь]\n═══════════════════════════\n{tag_string} (Все на связи!)",
-                        random_id=0
-                    )
-                except Exception:
-                    await bot.api.messages.send(
-                        peer_id=peer_id,
-                        message=f"📢 **ВНИМАНИЕ ВСЕМ!** 📢\n👤 Вызвал: [id{from_id}|Пользователь]\n@all",
-                        random_id=0
-                    )
-        elif event_type in ["chat_invite_user", "message_new"]:
-            peer_id = obj.get("peer_id")
+        # Если пиар включен, сразу пуляем рассылку в новый чат
+        if cfg.get("piar_active", False):
+            await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
 
-        if peer_id and peer_id > 2000000000:
-            cfg = load_config()
-            if peer_id not in cfg["chats"]:
-                cfg["chats"].append(peer_id)
-                save_config(cfg)
-                print(f"📥 Автоматически добавлен чат (peer_id: {peer_id})")
-                
-                if cfg.get("piar_active", False):
-                    await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
-    except Exception as e:
-        print(f"Ошибка в raw_event: {e}")
+    text = message.text
+    if not text: return
+    
+    clean_text = text.strip().lower()
+
+    # Система упоминания @all / все
+    if clean_text in ["@all", "все", "всем", "!all"]:
+        try:
+            members = await bot.api.messages.get_conversation_members(peer_id=peer_id)
+            mentions = []
+            
+            for m in members.items:
+                if m.member_id > 0 and len(mentions) < 30:
+                    mentions.append(f"[id{m.member_id}|•]")
+            
+            tag_string = " ".join(mentions)
+            
+            await message.answer(
+                f"📢 **ВНИМАНИЕ! ОБЩЕЕ УПОВЕЩЕНИЕ ОТ УЧАСТНИКА** 📢\n\n"
+                f"👤 Вызвал: [id{message.from_id}|Пользователь]\n"
+                f"═══════════════════════════\n"
+                f"{tag_string} (Все на связи!)"
+            )
+        except Exception:
+            await message.answer(
+                f"📢 **ВНИМАНИЕ ВСЕМ!** 📢\n"
+                f"👤 Вызвал: [id{message.from_id}|Пользователь]\n"
+                f"@all"
+            )
 
 
 if __name__ == "__main__":
-    print("🚀 Highload AutoPiar Bot (Raw Events Core) успешно запущен!")
+    print("🚀 Highload AutoPiar Bot успешно запущен без ошибок!")
     loop = asyncio.get_event_loop()
     loop.create_task(piar_loop())
     bot.run_forever()
