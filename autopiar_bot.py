@@ -69,7 +69,7 @@ async def send_to_chat(peer_id, text, attachment):
     try:
         await bot.api.messages.send(
             peer_id=int(peer_id),
-            message=text,
+            message=text if text else None,
             attachment=attachment if attachment else None,
             random_id=0
         )
@@ -123,16 +123,19 @@ async def private_start(message: Message):
         kb.row()
         status_text = "🟢 Выключить автопиар" if cfg.get("piar_active") else "🔴 Включить автопиар"
         kb.add(Text(status_text), color=KeyboardButtonColor.NEGATIVE)
+        kb.add(Text("🗑 Очистить пиар-текст"), color=KeyboardButtonColor.PRIMARY)
+        kb.row()
         kb.add(Text("🤖 Автоответчик"), color=KeyboardButtonColor.POSITIVE)
+        kb.add(Text("🛑 Выключить пиар-чаты"), color=KeyboardButtonColor.NEGATIVE)
         
     if is_main:
         kb.row()
-        kb.add(Text("🔑 Сменить токен бота"), color=KeyboardButtonColor.NEGATIVE)
         kb.add(Text("➕ Добавить админа"), color=KeyboardButtonColor.PRIMARY)
+        kb.add(Text("❌ Снять с админки"), color=KeyboardButtonColor.NEGATIVE)
 
     await message.answer(
-        "👑 **HIGHLOAD AUTO-PIAR & CONTROL PANEL** 👑\n\n"
-        "Добро пожаловать в центр управления автономным ботом.\n"
+        "👑 **ULTIMATE AUTO-PIAR CONTROL PANEL** 👑\n\n"
+        "Добро пожаловать в центр управления рассылкой.\n"
         "Используйте кнопки меню ниже:",
         keyboard=kb.get_json()
     )
@@ -146,7 +149,7 @@ async def private_status(message: Message):
     
     status_piar = "АКТИВЕН (каждую 1 мин) 🟢" if cfg.get("piar_active") else "ОСТАНОВЛЕН 🔴"
     chats_count = len(cfg.get("chats", []))
-    piar_text = cfg.get("piar_text", "Не задан")
+    piar_text = cfg.get("piar_text", "") or "Не задан (пусто)"
     piar_att = cfg.get("piar_attachment", "") or "Отсутствует"
     
     await message.answer(
@@ -155,7 +158,7 @@ async def private_status(message: Message):
         f"• Активных бесед в базе: `{chats_count}`\n"
         f"• Аптайм ядра: `{hours}ч {minutes}м {seconds}с`\n"
         f"• Прикрепленное медиа: `{piar_att}`\n\n"
-        f"💬 **Текущий текст рассылки:**\n"
+        f"💬 **Текущий текст рассылки вместе с медиа:**\n"
         f"────────────────────────\n"
         f"{piar_text}\n"
         f"────────────────────────"
@@ -174,6 +177,24 @@ async def private_toggle_piar(message: Message):
     state_str = "УСПЕШНО ВКЛЮЧЕН (рассылка каждую минуту) 🟢" if cfg["piar_active"] else "ОСТАНОВЛЕН 🔴"
     await message.answer(f"⚙️ Автопиар теперь: {state_str}")
 
+@bot.on.private_message(text="🛑 Выключить пиар-чаты")
+async def private_clear_chats(message: Message):
+    uid = message.from_id
+    cfg = load_config()
+    if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
+    cfg["chats"] = []
+    save_config(cfg)
+    await message.answer("🛑 Список пиар-чатов полностью очищен! Бот соберет новые чаты по мере активности.")
+
+@bot.on.private_message(text="🗑 Очистить пиар-текст")
+async def private_clear_text(message: Message):
+    uid = message.from_id
+    cfg = load_config()
+    if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
+    cfg["piar_text"] = ""
+    save_config(cfg)
+    await message.answer("🗑 Текст пиара успешно очищен (теперь рассылается только медиа, если оно задано).")
+
 @bot.on.private_message(text="⚙️ Настроить пиар-текст")
 async def private_set_text(message: Message):
     uid = message.from_id
@@ -188,7 +209,7 @@ async def private_set_att(message: Message):
     cfg = load_config()
     if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
     user_states[uid] = "wait_piar_att"
-    await message.answer("✍️ Отправьте ссылку или код вложения (например: `photo12345_67890`, `video12345_67890`), либо отправьте `нет`:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
+    await message.answer("✍️ Отправьте код вложения (например: `photo12345_67890`, `video12345_67890`), либо отправьте `нет` для удаления:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
 
 @bot.on.private_message(text="🤖 Автоответчик")
 async def private_set_resp(message: Message):
@@ -198,14 +219,6 @@ async def private_set_resp(message: Message):
     user_states[uid] = "wait_autoresponder"
     await message.answer(f"✍️ Текущий текст автоответчика:\n`{cfg.get('autoresponder')}`\n\nОтправьте новый текст:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
 
-@bot.on.private_message(text="🔑 Сменить токен бота")
-async def private_change_token(message: Message):
-    uid = message.from_id
-    cfg = load_config()
-    if uid != cfg["main_owner"]: return
-    user_states[uid] = "wait_new_token"
-    await message.answer("🔑 Введите новый токен от группы/страницы VK:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
-
 @bot.on.private_message(text="➕ Добавить админа")
 async def private_add_admin(message: Message):
     uid = message.from_id
@@ -213,6 +226,14 @@ async def private_add_admin(message: Message):
     if uid != cfg["main_owner"]: return
     user_states[uid] = "wait_new_admin"
     await message.answer("✍️ Введите цифровой VK ID нового администратора бота:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
+
+@bot.on.private_message(text="❌ Снять с админки")
+async def private_remove_admin(message: Message):
+    uid = message.from_id
+    cfg = load_config()
+    if uid != cfg["main_owner"]: return
+    user_states[uid] = "wait_remove_admin"
+    await message.answer(f"✍️ Текущие админы: `{cfg['admins']}`\n\nВведите VK ID администратора, которого нужно снять:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
 
 
 @bot.on.private_message()
@@ -241,12 +262,6 @@ async def private_states_handler(message: Message):
         save_config(cfg)
         return await message.answer("✅ Текст автоответчика успешно изменен!")
 
-    if state == "wait_new_token" and uid == cfg["main_owner"]:
-        del user_states[uid]
-        cfg["token"] = text.strip()
-        save_config(cfg)
-        return await message.answer("✅ Токен изменен! Перезапустите бота на хостинге.")
-
     if state == "wait_new_admin" and uid == cfg["main_owner"]:
         del user_states[uid]
         clean = text.strip().replace("id", "")
@@ -256,6 +271,20 @@ async def private_states_handler(message: Message):
                 cfg["admins"].append(tid)
                 save_config(cfg)
                 return await message.answer(f"✅ Пользователь [id{tid}|ID {tid}] назначен администратором бота.")
+        return await message.answer("❌ Неверный VK ID.")
+
+    if state == "wait_remove_admin" and uid == cfg["main_owner"]:
+        del user_states[uid]
+        clean = text.strip().replace("id", "")
+        if clean.isdigit():
+            tid = int(clean)
+            if tid == cfg["main_owner"]:
+                return await message.answer("❌ Нельзя снять главного владельца!")
+            if tid in cfg["admins"]:
+                cfg["admins"].remove(tid)
+                save_config(cfg)
+                return await message.answer(f"✅ Пользователь [id{tid}|ID {tid}] снят с админки бота.")
+            return await message.answer("❌ Этот пользователь не найден в списке админов.")
         return await message.answer("❌ Неверный VK ID.")
 
     is_admin = (uid == cfg["main_owner"] or uid in cfg["admins"])
