@@ -6,6 +6,7 @@ from threading import Thread
 from flask import Flask
 from vkbottle.bot import Bot, Message
 from vkbottle import Keyboard, KeyboardButtonColor, Text
+from vkbottle.dispatch.rules.base import GroupEventTypeRule
 
 # =====================================================================
 # 1. ВЕБ-СЕРВЕР ДЛЯ РАБОТЫ 24/7 (RENDER)
@@ -74,7 +75,7 @@ async def send_to_chat(peer_id, text, attachment):
             random_id=0
         )
     except Exception as e:
-        print(f"Не удалось отправить в чат {peer_id}: {e}")
+        print(f"⚠️ Не удалось отправить в чат {peer_id}: {e}")
 
 async def piar_loop():
     while True:
@@ -85,14 +86,14 @@ async def piar_loop():
                 attachment = cfg.get("piar_attachment", "")
                 chats = cfg["chats"]
                 
-                print(f"🚀 Запуск рассылки по {len(chats)} чатам...")
+                print(f"🚀 [AUTO-PIAR] Запуск рассылки по {len(chats)} чатам...")
                 batch_size = 30
                 for i in range(0, len(chats), batch_size):
                     batch = chats[i:i + batch_size]
                     tasks = [send_to_chat(peer_id, text, attachment) for peer_id in batch]
                     await asyncio.gather(*tasks)
                     await asyncio.sleep(0.3)
-                print("✅ Рассылка круга завершена.")
+                print("✅ [AUTO-PIAR] Круг рассылки завершен.")
         except Exception as e:
             print(f"Ошибка в потоке автопиаpa: {e}")
         
@@ -295,62 +296,55 @@ async def private_states_handler(message: Message):
 
 
 # =====================================================================
-# 5. РАБОТА В БЕСЕДАХ (МОМЕНТАЛЬНЫЙ СТАРТ ПИАРА ПРИ ДОБАВЛЕНИИ + @all)
+# 5. УНИВЕРСАЛЬНЫЙ СБОР ЧАТОВ НА УРОВНЕ СЫРЫХ СОБЫТИЙ (RAW EVENTS)
 # =====================================================================
 
-@bot.on.chat_message()
-async def chat_handler(message: Message):
-    peer_id = message.peer_id
-    cfg = load_config()
-    
-    # 1. Если бота только что добавили в беседу
-    if message.action and message.action.type == "chat_invite_user":
-        if peer_id not in cfg["chats"]:
-            cfg["chats"].append(peer_id)
-            save_config(cfg)
-            
-        # ЕСЛИ ПИАР ВКЛЮЧЕН — СРАЗУ ЖЕ КИДАЕМ РАССЫЛКУ В ЭТОТ ЧАТ!
-        if cfg.get("piar_active", False):
-            await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
-        return
+@bot.on.raw_event(GroupEventTypeRule("message_new"))
+async def raw_message_handler(event):
+    try:
+        msg_obj = event.object.get("message", {})
+        peer_id = msg_obj.get("peer_id")
+        
+        if peer_id and peer_id > 2000000000: # Это беседы в VK
+            cfg = load_config()
+            if peer_id not in cfg["chats"]:
+                cfg["chats"].append(peer_id)
+                save_config(cfg)
+                print(f"📥 Автоматически добавлен новый чат (peer_id: {peer_id})")
+                
+                # Если пиар включен, сразу пуляем в него сообщение!
+                if cfg.get("piar_active", False):
+                    await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
 
-    # 2. Обычный сбор чатов при активности
-    if peer_id not in cfg["chats"]:
-        cfg["chats"].append(peer_id)
-        save_config(cfg)
-
-    text = message.text
-    if not text: return
-    
-    clean_text = text.strip().lower()
-
-    if clean_text in ["@all", "все", "всем", "!all"]:
-        try:
-            members = await bot.api.messages.get_conversation_members(peer_id=peer_id)
-            mentions = []
-            
-            for m in members.items:
-                if m.member_id > 0 and len(mentions) < 30:
-                    mentions.append(f"[id{m.member_id}|•]")
-            
-            tag_string = " ".join(mentions)
-            
-            await message.answer(
-                f"📢 **ВНИМАНИЕ! ОБЩЕЕ УПОВЕЩЕНИЕ ОТ УЧАСТНИКА** 📢\n\n"
-                f"👤 Вызвал: [id{message.from_id}|Пользователь]\n"
-                f"═══════════════════════════\n"
-                f"{tag_string} (Все на связи!)"
-            )
-        except Exception:
-            await message.answer(
-                f"📢 **ВНИМАНИЕ ВСЕМ!** 📢\n"
-                f"👤 Вызвал: [id{message.from_id}|Пользователь]\n"
-                f"@all"
-            )
+            # Обработка тега @all / все
+            text = msg_obj.get("text", "").strip().lower()
+            if text in ["@all", "все", "всем", "!all"]:
+                from_id = msg_obj.get("from_id")
+                try:
+                    members = await bot.api.messages.get_conversation_members(peer_id=peer_id)
+                    mentions = []
+                    for m in members.items:
+                        if m.member_id > 0 and len(mentions) < 30:
+                            mentions.append(f"[id{m.member_id}|•]")
+                    tag_string = " ".join(mentions)
+                    
+                    await bot.api.messages.send(
+                        peer_id=peer_id,
+                        message=f"📢 **ВНИМАНИЕ! ОБЩЕЕ УПОВЕЩЕНИЕ** 📢\n\n👤 Вызвал: [id{from_id}|Пользователь]\n═══════════════════════════\n{tag_string} (Все на связи!)",
+                        random_id=0
+                    )
+                except Exception:
+                    await bot.api.messages.send(
+                        peer_id=peer_id,
+                        message=f"📢 **ВНИМАНИЕ ВСЕМ!** 📢\n👤 Вызвал: [id{from_id}|Пользователь]\n@all",
+                        random_id=0
+                    )
+    except Exception as e:
+        print(f"Ошибка в raw_event: {e}")
 
 
 if __name__ == "__main__":
-    print("🚀 Highload AutoPiar Bot успешно запущен!")
+    print("🚀 Highload AutoPiar Bot (Raw Events Core) успешно запущен!")
     loop = asyncio.get_event_loop()
     loop.create_task(piar_loop())
     bot.run_forever()
