@@ -6,7 +6,6 @@ from threading import Thread
 from flask import Flask
 from vkbottle.bot import Bot, Message
 from vkbottle import Keyboard, KeyboardButtonColor, Text
-from vkbottle.dispatch.rules.base import GroupEventTypeRule
 
 # =====================================================================
 # 1. ВЕБ-СЕРВЕР ДЛЯ РАБОТЫ 24/7 (RENDER)
@@ -296,29 +295,23 @@ async def private_states_handler(message: Message):
 
 
 # =====================================================================
-# 5. УНИВЕРСАЛЬНЫЙ СБОР ЧАТОВ НА УРОВНЕ СЫРЫХ СОБЫТИЙ (RAW EVENTS)
+# 5. УНИВЕРСАЛЬНЫЙ ПЕРЕХВАТЧИК СОБЫТИЙ (RAW EVENTS)
 # =====================================================================
 
-@bot.on.raw_event(GroupEventTypeRule("message_new"))
-async def raw_message_handler(event):
+@bot.on.raw_event()
+async def raw_event_handler(event):
     try:
-        msg_obj = event.object.get("message", {})
-        peer_id = msg_obj.get("peer_id")
+        event_type = event.get("type")
+        obj = event.get("object", {})
         
-        if peer_id and peer_id > 2000000000: # Это беседы в VK
-            cfg = load_config()
-            if peer_id not in cfg["chats"]:
-                cfg["chats"].append(peer_id)
-                save_config(cfg)
-                print(f"📥 Автоматически добавлен новый чат (peer_id: {peer_id})")
-                
-                # Если пиар включен, сразу пуляем в него сообщение!
-                if cfg.get("piar_active", False):
-                    await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
-
-            # Обработка тега @all / все
+        peer_id = None
+        if event_type == "message_new":
+            msg_obj = obj.get("message", {})
+            peer_id = msg_obj.get("peer_id")
+            
+            # Обработка @all / все
             text = msg_obj.get("text", "").strip().lower()
-            if text in ["@all", "все", "всем", "!all"]:
+            if peer_id and peer_id > 2000000000 and text in ["@all", "все", "всем", "!all"]:
                 from_id = msg_obj.get("from_id")
                 try:
                     members = await bot.api.messages.get_conversation_members(peer_id=peer_id)
@@ -339,6 +332,18 @@ async def raw_message_handler(event):
                         message=f"📢 **ВНИМАНИЕ ВСЕМ!** 📢\n👤 Вызвал: [id{from_id}|Пользователь]\n@all",
                         random_id=0
                     )
+        elif event_type in ["chat_invite_user", "message_new"]:
+            peer_id = obj.get("peer_id")
+
+        if peer_id and peer_id > 2000000000:
+            cfg = load_config()
+            if peer_id not in cfg["chats"]:
+                cfg["chats"].append(peer_id)
+                save_config(cfg)
+                print(f"📥 Автоматически добавлен чат (peer_id: {peer_id})")
+                
+                if cfg.get("piar_active", False):
+                    await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
     except Exception as e:
         print(f"Ошибка в raw_event: {e}")
 
