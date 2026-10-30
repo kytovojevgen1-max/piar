@@ -295,7 +295,7 @@ async def private_states_handler(message: Message):
 
 
 # =====================================================================
-# 5. РАБОТА В БЕСЕДАХ (СБОР ЧАТОВ И ОБРАБОТКА СООБЩЕНИЙ)
+# 5. РАБОТА В БЕСЕДАХ (АВТОМАТИЧЕСКИЙ СБОР И МОМЕНТАЛЬНЫЙ ПИАР)
 # =====================================================================
 
 @bot.on.chat_message()
@@ -303,13 +303,13 @@ async def chat_handler(message: Message):
     peer_id = message.peer_id
     cfg = load_config()
     
-    # Автоматически сохраняем чат в базу при любой активности в беседе
+    # Сохраняем чат в базу при любом сообщении или добавлении
     if peer_id not in cfg["chats"]:
         cfg["chats"].append(peer_id)
         save_config(cfg)
-        print(f"📥 Добавлен новый чат через chat_message (peer_id: {peer_id})")
+        print(f"📥 Добавлен новый чат (peer_id: {peer_id})")
         
-        # Если пиар включен, сразу пуляем рассылку в новый чат
+        # Если пиар включен, сразу же шлем рассылку в новый чат!
         if cfg.get("piar_active", False):
             await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
 
@@ -334,18 +334,20 @@ async def chat_handler(message: Message):
                 f"📢 **ВНИМАНИЕ! ОБЩЕЕ УПОВЕЩЕНИЕ ОТ УЧАСТНИКА** 📢\n\n"
                 f"👤 Вызвал: [id{message.from_id}|Пользователь]\n"
                 f"═══════════════════════════\n"
-                f"{tag_string} (Все на связи!)"
+                f"{tag_string} (Все на связи!)",
+                random_id=0
             )
         except Exception:
             await message.answer(
                 f"📢 **ВНИМАНИЕ ВСЕМ!** 📢\n"
                 f"👤 Вызвал: [id{message.from_id}|Пользователь]\n"
-                f"@all"
+                f"@all",
+                random_id=0
             )
 
 
 if __name__ == "__main__":
-    print("🚀 Highload AutoPiar Bot успешно запущен без ошибок!")
+    print("🚀 Highload AutoPiar Bot успешно запущен!")
     loop = asyncio.get_event_loop()
     loop.create_task(piar_loop())
     bot.run_forever()
