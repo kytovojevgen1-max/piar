@@ -63,7 +63,7 @@ user_states = {}
 
 
 # =====================================================================
-# 3. HIGHLOAD АСИНХРОННЫЙ ПОТОК АВТОПИАРА (САЗУ СТАРТ И КАЖДЫЕ 60 СЕК)
+# 3. HIGHLOAD АСИНХРОННЫЙ ПОТОК АВТОПИАРА
 # =====================================================================
 async def send_to_chat(peer_id, text, attachment):
     try:
@@ -73,11 +73,10 @@ async def send_to_chat(peer_id, text, attachment):
             attachment=attachment if attachment else None,
             random_id=0
         )
-    except Exception:
-        pass # Игнорируем мертвые чаты, исключения и ограничения
+    except Exception as e:
+        print(f"Не удалось отправить в чат {peer_id}: {e}")
 
 async def piar_loop():
-    # Ждать больше не нужно — при запуске сразу делаем первый круг!
     while True:
         try:
             cfg = load_config()
@@ -86,17 +85,17 @@ async def piar_loop():
                 attachment = cfg.get("piar_attachment", "")
                 chats = cfg["chats"]
                 
-                # Отправляем пачками по 30 бесед одновременно
+                print(f"🚀 Запуск рассылки по {len(chats)} чатам...")
                 batch_size = 30
                 for i in range(0, len(chats), batch_size):
                     batch = chats[i:i + batch_size]
                     tasks = [send_to_chat(peer_id, text, attachment) for peer_id in batch]
                     await asyncio.gather(*tasks)
                     await asyncio.sleep(0.3)
+                print("✅ Рассылка круга завершена.")
         except Exception as e:
             print(f"Ошибка в потоке автопиаpa: {e}")
         
-        # Ровно 60 секунд паузы до следующего круга
         await asyncio.sleep(60)
 
 
@@ -296,7 +295,7 @@ async def private_states_handler(message: Message):
 
 
 # =====================================================================
-# 5. РАБОТА В БЕСЕДАХ (АВТОСБОР ЧАТОВ ДАЖЕ БЕЗ ПРАВ АДМИНА + @all)
+# 5. РАБОТА В БЕСЕДАХ (МОМЕНТАЛЬНЫЙ СТАРТ ПИАРА ПРИ ДОБАВЛЕНИИ + @all)
 # =====================================================================
 
 @bot.on.chat_message()
@@ -304,16 +303,21 @@ async def chat_handler(message: Message):
     peer_id = message.peer_id
     cfg = load_config()
     
-    # Автоматически сохраняем чат при любом сообщении или действии
-    if peer_id not in cfg["chats"]:
-        cfg["chats"].append(peer_id)
-        save_config(cfg)
-
-    # Ловим добавление бота в беседу
+    # 1. Если бота только что добавили в беседу
     if message.action and message.action.type == "chat_invite_user":
         if peer_id not in cfg["chats"]:
             cfg["chats"].append(peer_id)
             save_config(cfg)
+            
+        # ЕСЛИ ПИАР ВКЛЮЧЕН — СРАЗУ ЖЕ КИДАЕМ РАССЫЛКУ В ЭТОТ ЧАТ!
+        if cfg.get("piar_active", False):
+            await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
+        return
+
+    # 2. Обычный сбор чатов при активности
+    if peer_id not in cfg["chats"]:
+        cfg["chats"].append(peer_id)
+        save_config(cfg)
 
     text = message.text
     if not text: return
