@@ -63,7 +63,7 @@ user_states = {}
 
 
 # =====================================================================
-# 3. HIGHLOAD АСИНХРОННЫЙ ПОТОК АВТОПИАРА (ПОД 5000+ БЕСЕД)
+# 3. HIGHLOAD АСИНХРОННЫЙ ПОТОК АВТОПИАРА (САЗУ СТАРТ И КАЖДЫЕ 60 СЕК)
 # =====================================================================
 async def send_to_chat(peer_id, text, attachment):
     try:
@@ -74,10 +74,10 @@ async def send_to_chat(peer_id, text, attachment):
             random_id=0
         )
     except Exception:
-        pass # Игнорируем мертвые чаты или кики
+        pass # Игнорируем мертвые чаты, исключения и ограничения
 
 async def piar_loop():
-    await asyncio.sleep(10)
+    # Ждать больше не нужно — при запуске сразу делаем первый круг!
     while True:
         try:
             cfg = load_config()
@@ -86,7 +86,7 @@ async def piar_loop():
                 attachment = cfg.get("piar_attachment", "")
                 chats = cfg["chats"]
                 
-                # Отправляем пачками по 30 штук одновременно для мгновенного охвата 5000+ чатов
+                # Отправляем пачками по 30 бесед одновременно
                 batch_size = 30
                 for i in range(0, len(chats), batch_size):
                     batch = chats[i:i + batch_size]
@@ -96,7 +96,7 @@ async def piar_loop():
         except Exception as e:
             print(f"Ошибка в потоке автопиаpa: {e}")
         
-        # Ждем ровно 60 секунд (1 минуту) до следующего круга
+        # Ровно 60 секунд паузы до следующего круга
         await asyncio.sleep(60)
 
 
@@ -184,7 +184,7 @@ async def private_clear_chats(message: Message):
     if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
     cfg["chats"] = []
     save_config(cfg)
-    await message.answer("🛑 Список пиар-чатов полностью очищен! Бот соберет новые чаты по мере активности.")
+    await message.answer("🛑 Список пиар-чатов полностью очищен!")
 
 @bot.on.private_message(text="🗑 Очистить пиар-текст")
 async def private_clear_text(message: Message):
@@ -193,7 +193,7 @@ async def private_clear_text(message: Message):
     if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
     cfg["piar_text"] = ""
     save_config(cfg)
-    await message.answer("🗑 Текст пиара успешно очищен (теперь рассылается только медиа, если оно задано).")
+    await message.answer("🗑 Текст пиара успешно очищен.")
 
 @bot.on.private_message(text="⚙️ Настроить пиар-текст")
 async def private_set_text(message: Message):
@@ -209,7 +209,7 @@ async def private_set_att(message: Message):
     cfg = load_config()
     if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
     user_states[uid] = "wait_piar_att"
-    await message.answer("✍️ Отправьте код вложения (например: `photo12345_67890`, `video12345_67890`), либо отправьте `нет` для удаления:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
+    await message.answer("✍️ Отправьте код вложения (например: `photo12345_67890`), либо `нет` для удаления:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
 
 @bot.on.private_message(text="🤖 Автоответчик")
 async def private_set_resp(message: Message):
@@ -233,7 +233,7 @@ async def private_remove_admin(message: Message):
     cfg = load_config()
     if uid != cfg["main_owner"]: return
     user_states[uid] = "wait_remove_admin"
-    await message.answer(f"✍️ Текущие админы: `{cfg['admins']}`\n\nВведите VK ID администратора, которого нужно снять:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
+    await message.answer(f"✍️ Текущие админы: `{cfg['admins']}`\n\nВведите VK ID администратора для снятия:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
 
 
 @bot.on.private_message()
@@ -296,7 +296,7 @@ async def private_states_handler(message: Message):
 
 
 # =====================================================================
-# 5. РАБОТА В БЕСЕДАХ (СБОР ЧАТОВ И СИСТЕМА @all)
+# 5. РАБОТА В БЕСЕДАХ (АВТОСБОР ЧАТОВ ДАЖЕ БЕЗ ПРАВ АДМИНА + @all)
 # =====================================================================
 
 @bot.on.chat_message()
@@ -304,9 +304,16 @@ async def chat_handler(message: Message):
     peer_id = message.peer_id
     cfg = load_config()
     
+    # Автоматически сохраняем чат при любом сообщении или действии
     if peer_id not in cfg["chats"]:
         cfg["chats"].append(peer_id)
         save_config(cfg)
+
+    # Ловим добавление бота в беседу
+    if message.action and message.action.type == "chat_invite_user":
+        if peer_id not in cfg["chats"]:
+            cfg["chats"].append(peer_id)
+            save_config(cfg)
 
     text = message.text
     if not text: return
