@@ -41,9 +41,9 @@ def load_config():
             pass
     return {
         "token": "vk1.a.q9RtV2818QWiCSFGgHLzR4gQr2xQ2fSIQKFbsrcoEudGaNSukxF_w-BSKNVvpWJhE6hON3wI9NBU5i96-0GVe0LTJ3so3jVMTfM6gQSZyWHkMO0187j0xC3ymyobpNhdxOUEAq5XsVnAdij_c9plT0lBdW-qD9cWxVw-Cp5ip7pCSkXvWBmAeJZ13rY2llgn3IczHjaPXOadwgLarLb96Q",
-        "main_owner": 897082738,  # Твой главный VK ID
+        "main_owner": 897082738,
         "admins": [897082738],
-        "chats": [],
+        "chats": [], # Сюда автоматически соберутся чаты
         "piar_text": "📢 Привет! Это ультимативный автопиар-бот.\n🌐 Максимальный охват бесед!",
         "piar_attachment": "", 
         "autoresponder": "🤖 Здравствуйте! Сообщение получено. Администратор ответит вам в ближайшее время.",
@@ -67,40 +67,41 @@ user_states = {}
 # =====================================================================
 async def send_to_chat(peer_id, text, attachment):
     try:
-        await bot.api.messages.send(
+        res = await bot.api.messages.send(
             peer_id=int(peer_id),
             message=text if text else None,
             attachment=attachment if attachment else None,
             random_id=0
         )
+        print(f"✅ Успешно отправлено в чат {peer_id} (res: {res})")
     except Exception as e:
-        print(f"⚠️ Не удалось отправить в чат {peer_id}: {e}")
+        print(f"❌ Ошибка отправки в чат {peer_id}: {e}")
 
 async def piar_loop():
     while True:
         try:
             cfg = load_config()
-            if cfg.get("piar_active", False) and cfg.get("chats"):
+            active = cfg.get("piar_active", False)
+            chats = cfg.get("chats", [])
+            print(f"🔄 Проверка пиара: активен={active}, бесед в базе={len(chats)}")
+            
+            if active and chats:
                 text = cfg.get("piar_text", "")
                 attachment = cfg.get("piar_attachment", "")
-                chats = cfg["chats"]
                 
-                print(f"🚀 [AUTO-PIAR] Запуск рассылки по {len(chats)} чатам...")
-                batch_size = 30
-                for i in range(0, len(chats), batch_size):
-                    batch = chats[i:i + batch_size]
-                    tasks = [send_to_chat(peer_id, text, attachment) for peer_id in batch]
-                    await asyncio.gather(*tasks)
-                    await asyncio.sleep(0.3)
-                print("✅ [AUTO-PIAR] Круг рассылки завершен.")
+                print(f"🚀 Запуск рассылки по беседам...")
+                for peer_id in chats:
+                    await send_to_chat(peer_id, text, attachment)
+                    await asyncio.sleep(0.2)
+                print(f"🏁 Рассылка завершена.")
         except Exception as e:
-            print(f"Ошибка в потоке автопиаpa: {e}")
+            print(f"⚠️ Ошибка в потоке пиара: {e}")
         
         await asyncio.sleep(60)
 
 
 # =====================================================================
-# 4. ЛИЧНЫЕ СООБЩЕНИЯ И ПАНЕЛЬ УПРАВЛЕНИЯ
+# 4. ПАНЕЛЬ УПРАВЛЕНИЯ В ЛИЧНЫХ СООБЩЕНИЯХ
 # =====================================================================
 
 @bot.on.private_message(text=["/start", "Начать", "начать", "Меню", "меню", "🔙 Главное меню", "❌ Отмена"])
@@ -134,8 +135,7 @@ async def private_start(message: Message):
 
     await message.answer(
         "👑 **ULTIMATE AUTO-PIAR CONTROL PANEL** 👑\n\n"
-        "Добро пожаловать в центр управления рассылкой.\n"
-        "Используйте кнопки меню ниже:",
+        "Панель управления активна.",
         keyboard=kb.get_json()
     )
 
@@ -146,21 +146,15 @@ async def private_status(message: Message):
     hours, remainder = divmod(uptime_sec, 3600)
     minutes, seconds = divmod(remainder, 60)
     
-    status_piar = "АКТИВЕН (каждую 1 мин) 🟢" if cfg.get("piar_active") else "ОСТАНОВЛЕН 🔴"
-    chats_count = len(cfg.get("chats", []))
-    piar_text = cfg.get("piar_text", "") or "Не задан (пусто)"
-    piar_att = cfg.get("piar_attachment", "") or "Отсутствует"
+    status_piar = "АКТИВЕН 🟢" if cfg.get("piar_active") else "ОСТАНОВЛЕН 🔴"
+    chats_list = cfg.get("chats", [])
     
     await message.answer(
-        f"📊 **ПОЛНЫЙ СТАТУС СИСТЕМЫ:**\n\n"
-        f"• Статус пиара: {status_piar}\n"
-        f"• Активных бесед в базе: `{chats_count}`\n"
-        f"• Аптайм ядра: `{hours}ч {minutes}м {seconds}с`\n"
-        f"• Прикрепленное медиа: `{piar_att}`\n\n"
-        f"💬 **Текущий текст рассылки вместе с медиа:**\n"
-        f"────────────────────────\n"
-        f"{piar_text}\n"
-        f"────────────────────────"
+        f"📊 **СТАТУС:**\n"
+        f"• Пиар: {status_piar}\n"
+        f"• Чатов в базе: {len(chats_list)}\n"
+        f"• Список чатов: `{chats_list}`\n"
+        f"• Аптайм: {hours}ч {minutes}м"
     )
 
 @bot.on.private_message(text=["🔴 Включить автопиар", "🟢 Выключить автопиар"])
@@ -169,71 +163,38 @@ async def private_toggle_piar(message: Message):
     cfg = load_config()
     if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
     
-    current = cfg.get("piar_active", False)
-    cfg["piar_active"] = not current
+    cfg["piar_active"] = not cfg.get("piar_active", False)
     save_config(cfg)
-    
-    state_str = "УСПЕШНО ВКЛЮЧЕН (рассылка каждую минуту) 🟢" if cfg["piar_active"] else "ОСТАНОВЛЕН 🔴"
-    await message.answer(f"⚙️ Автопиар теперь: {state_str}")
+    await message.answer(f"⚙️ Пиар теперь: {'АКТИВЕН 🟢' if cfg['piar_active'] else 'ОСТАНОВЛЕН 🔴'}")
 
 @bot.on.private_message(text="🛑 Выключить пиар-чаты")
 async def private_clear_chats(message: Message):
-    uid = message.from_id
     cfg = load_config()
-    if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
     cfg["chats"] = []
     save_config(cfg)
-    await message.answer("🛑 Список пиар-чатов полностью очищен!")
+    await message.answer("🛑 Список чатов очищен.")
 
 @bot.on.private_message(text="🗑 Очистить пиар-текст")
 async def private_clear_text(message: Message):
-    uid = message.from_id
     cfg = load_config()
-    if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
     cfg["piar_text"] = ""
     save_config(cfg)
-    await message.answer("🗑 Текст пиара успешно очищен.")
+    await message.answer("🗑 Текст очищен.")
 
 @bot.on.private_message(text="⚙️ Настроить пиар-текст")
 async def private_set_text(message: Message):
-    uid = message.from_id
-    cfg = load_config()
-    if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
-    user_states[uid] = "wait_piar_text"
-    await message.answer("✍️ Отправьте новый текст для автопиара:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
+    user_states[message.from_id] = "wait_piar_text"
+    await message.answer("✍️ Отправьте новый текст:")
 
 @bot.on.private_message(text="📎 Задать вложение")
 async def private_set_att(message: Message):
-    uid = message.from_id
-    cfg = load_config()
-    if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
-    user_states[uid] = "wait_piar_att"
-    await message.answer("✍️ Отправьте код вложения (например: `photo12345_67890`), либо `нет` для удаления:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
+    user_states[message.from_id] = "wait_piar_att"
+    await message.answer("✍️ Отправьте код вложения (например `photo123_456`):")
 
 @bot.on.private_message(text="🤖 Автоответчик")
 async def private_set_resp(message: Message):
-    uid = message.from_id
-    cfg = load_config()
-    if uid != cfg["main_owner"] and uid not in cfg["admins"]: return
-    user_states[uid] = "wait_autoresponder"
-    await message.answer(f"✍️ Текущий текст автоответчика:\n`{cfg.get('autoresponder')}`\n\nОтправьте новый текст:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
-
-@bot.on.private_message(text="➕ Добавить админа")
-async def private_add_admin(message: Message):
-    uid = message.from_id
-    cfg = load_config()
-    if uid != cfg["main_owner"]: return
-    user_states[uid] = "wait_new_admin"
-    await message.answer("✍️ Введите цифровой VK ID нового администратора бота:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
-
-@bot.on.private_message(text="❌ Снять с админки")
-async def private_remove_admin(message: Message):
-    uid = message.from_id
-    cfg = load_config()
-    if uid != cfg["main_owner"]: return
-    user_states[uid] = "wait_remove_admin"
-    await message.answer(f"✍️ Текущие админы: `{cfg['admins']}`\n\nВведите VK ID администратора для снятия:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
-
+    user_states[message.from_id] = "wait_autoresponder"
+    await message.answer("✍️ Отправьте текст автоответчика:")
 
 @bot.on.private_message()
 async def private_states_handler(message: Message):
@@ -243,59 +204,32 @@ async def private_states_handler(message: Message):
     state = user_states.get(uid)
     cfg = load_config()
 
-    if state == "wait_piar_text" and (uid == cfg["main_owner"] or uid in cfg["admins"]):
+    if state == "wait_piar_text":
         del user_states[uid]
         cfg["piar_text"] = text
         save_config(cfg)
-        return await message.answer("✅ Текст автопиара успешно обновлен!")
+        return await message.answer("✅ Текст обновлен!")
 
-    if state == "wait_piar_att" and (uid == cfg["main_owner"] or uid in cfg["admins"]):
+    if state == "wait_piar_att":
         del user_states[uid]
-        cfg["piar_attachment"] = "" if text.lower() in ["нет", "0", "отмена"] else text.strip()
+        cfg["piar_attachment"] = "" if text.lower() in ["нет", "отмена"] else text.strip()
         save_config(cfg)
-        return await message.answer("✅ Вложение для автопиара обновлено!")
+        return await message.answer("✅ Вложение обновлено!")
 
-    if state == "wait_autoresponder" and (uid == cfg["main_owner"] or uid in cfg["admins"]):
+    if state == "wait_autoresponder":
         del user_states[uid]
         cfg["autoresponder"] = text
         save_config(cfg)
-        return await message.answer("✅ Текст автоответчика успешно изменен!")
+        return await message.answer("✅ Автоответчик обновлен!")
 
-    if state == "wait_new_admin" and uid == cfg["main_owner"]:
-        del user_states[uid]
-        clean = text.strip().replace("id", "")
-        if clean.isdigit():
-            tid = int(clean)
-            if tid not in cfg["admins"]:
-                cfg["admins"].append(tid)
-                save_config(cfg)
-                return await message.answer(f"✅ Пользователь [id{tid}|ID {tid}] назначен администратором бота.")
-        return await message.answer("❌ Неверный VK ID.")
-
-    if state == "wait_remove_admin" and uid == cfg["main_owner"]:
-        del user_states[uid]
-        clean = text.strip().replace("id", "")
-        if clean.isdigit():
-            tid = int(clean)
-            if tid == cfg["main_owner"]:
-                return await message.answer("❌ Нельзя снять главного владельца!")
-            if tid in cfg["admins"]:
-                cfg["admins"].remove(tid)
-                save_config(cfg)
-                return await message.answer(f"✅ Пользователь [id{tid}|ID {tid}] снят с админки бота.")
-            return await message.answer("❌ Этот пользователь не найден в списке админов.")
-        return await message.answer("❌ Неверный VK ID.")
-
-    is_admin = (uid == cfg["main_owner"] or uid in cfg["admins"])
-    if not is_admin:
-        resp = cfg.get("autoresponder", "Здравствуйте! Сообщение получено.")
-        return await message.answer(resp)
-
-    await message.answer("❌ Используйте кнопки меню.")
+    if uid in cfg["admins"] or uid == cfg["main_owner"]:
+        await message.answer("❌ Используйте кнопки меню.")
+    else:
+        await message.answer(cfg.get("autoresponder", "Здравствуйте!"))
 
 
 # =====================================================================
-# 5. РАБОТА В БЕСЕДАХ (АВТОМАТИЧЕСКИЙ СБОР И МОМЕНТАЛЬНЫЙ ПИАР)
+# 5. СБОР ЧАТОВ И ИХ ПЕРЕХВАТ
 # =====================================================================
 
 @bot.on.chat_message()
@@ -303,51 +237,23 @@ async def chat_handler(message: Message):
     peer_id = message.peer_id
     cfg = load_config()
     
-    # Сохраняем чат в базу при любом сообщении или добавлении
     if peer_id not in cfg["chats"]:
         cfg["chats"].append(peer_id)
         save_config(cfg)
-        print(f"📥 Добавлен новый чат (peer_id: {peer_id})")
-        
-        # Если пиар включен, сразу же шлем рассылку в новый чат!
-        if cfg.get("piar_active", False):
-            await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
+        print(f"📥 НОВЫЙ ЧАТ ДОБАВЛЕН В БАЗУ: {peer_id}")
 
     text = message.text
-    if not text: return
-    
-    clean_text = text.strip().lower()
-
-    # Система упоминания @all / все
-    if clean_text in ["@all", "все", "всем", "!all"]:
+    if text and text.strip().lower() in ["@all", "все", "всем", "!all"]:
         try:
             members = await bot.api.messages.get_conversation_members(peer_id=peer_id)
-            mentions = []
-            
-            for m in members.items:
-                if m.member_id > 0 and len(mentions) < 30:
-                    mentions.append(f"[id{m.member_id}|•]")
-            
-            tag_string = " ".join(mentions)
-            
-            await message.answer(
-                f"📢 **ВНИМАНИЕ! ОБЩЕЕ УПОВЕЩЕНИЕ ОТ УЧАСТНИКА** 📢\n\n"
-                f"👤 Вызвал: [id{message.from_id}|Пользователь]\n"
-                f"═══════════════════════════\n"
-                f"{tag_string} (Все на связи!)",
-                random_id=0
-            )
+            mentions = [f"[id{m.member_id}|•]" for m in members.items if m.member_id > 0][:30]
+            await message.answer(f"📢 **УПОВЕЩЕНИЕ ВСЕМ**\n" + " ".join(mentions), random_id=0)
         except Exception:
-            await message.answer(
-                f"📢 **ВНИМАНИЕ ВСЕМ!** 📢\n"
-                f"👤 Вызвал: [id{message.from_id}|Пользователь]\n"
-                f"@all",
-                random_id=0
-            )
+            await message.answer("📢 **ВНИМАНИЕ ВСЕМ!** @all", random_id=0)
 
 
 if __name__ == "__main__":
-    print("🚀 Highload AutoPiar Bot успешно запущен!")
+    print("🚀 AutoPiar Bot запущен и готов к работе!")
     loop = asyncio.get_event_loop()
     loop.create_task(piar_loop())
     bot.run_forever()
