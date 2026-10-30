@@ -63,7 +63,7 @@ user_states = {}
 
 
 # =====================================================================
-# 3. ПОТОК РАССЫЛКИ
+# 3. ПОТОК АВТОПИАРА (КАЖДЫЕ 60 СЕКУНД)
 # =====================================================================
 async def send_to_chat(peer_id, text, attachment):
     try:
@@ -94,13 +94,17 @@ async def run_mailing():
         print("✅ [AUTO-PIAR] Круг завершен.")
 
 async def piar_loop():
-    print("🚀 [LOOP] Фоновый поток запущен.")
+    print("🚀 [LOOP] Фоновый поток автопиара активирован.")
     while True:
         await asyncio.sleep(60)
         try:
             await run_mailing()
         except Exception as e:
             print(f"❌ Ошибка в потоке пиара: {e}")
+
+@bot.on.startup()
+async def startup_background_tasks(ans):
+    asyncio.create_task(piar_loop())
 
 
 # =====================================================================
@@ -177,14 +181,12 @@ async def private_handler(message: Message):
             return await message.answer("✅ Текст автоответчика изменен!", keyboard=get_main_keyboard(uid))
         elif state == "wait_add_chat":
             del user_states[uid]
-            # Если переслали сообщение из чата, у сообщения есть peer_id беседы
             target_peer = message.peer_id
             if message.fwd_messages:
                 target_peer = message.fwd_messages[0].peer_id
             elif text_clean.isdigit() or (text_clean.startswith("-") and text_clean[1:].isdigit()):
                 target_peer = int(text_clean)
             
-            # В VK беседы имеют peer_id вида 2000000001+
             if target_peer > 2000000000 or target_peer < 0:
                 if target_peer not in cfg["chats"]:
                     cfg["chats"].append(target_peer)
@@ -266,7 +268,7 @@ async def private_handler(message: Message):
         
         if text_clean == "➕ Добавить чат":
             user_states[uid] = "wait_add_chat"
-            return await message.answer("📥 **Добавление чата вручную:**\n\nПросто **перешлите любое сообщение** из нужной беседы сюда в личку, либо отправьте числовой ID чата (например `2000000001`):", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
+            return await message.answer("📥 **Добавление чата вручную:**\n\nПросто **перешлите любое сообщение** из нужной беседы сюда в личку, либо отправьте числовой ID чата:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
         
         if text_clean == "🛑 Очистить чаты":
             cfg["chats"] = []
@@ -323,6 +325,4 @@ async def chat_handler(message: Message):
 
 if __name__ == "__main__":
     print("🚀 AutoPiar Bot успешно запущен!")
-    loop = asyncio.get_event_loop()
-    loop.create_task(piar_loop())
     bot.run_forever()
