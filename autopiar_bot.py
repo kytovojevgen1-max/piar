@@ -63,7 +63,7 @@ user_states = {}
 
 
 # =====================================================================
-# 3. HIGHLOAD АСИНХРОННЫЙ ПОТОК АВТОПИАРА (КАЖДЫЕ 60 СЕК)
+# 3. ЖЕЛЕЗОБЕТОННЫЙ ПОТОК АВТОПИАРА (КАЖДЫЕ 60 СЕК ПО КРУГУ)
 # =====================================================================
 async def send_to_chat(peer_id, text, attachment):
     try:
@@ -77,7 +77,10 @@ async def send_to_chat(peer_id, text, attachment):
         print(f"⚠️ Не удалось отправить в чат {peer_id}: {e}")
 
 async def piar_loop():
+    print("🚀 [LOOP] Фоновый поток автопиара запущен.")
     while True:
+        # Ждем ровно 60 секунд перед каждой рассылкой
+        await asyncio.sleep(60)
         try:
             cfg = load_config()
             if cfg.get("piar_active", False) and cfg.get("chats"):
@@ -85,22 +88,20 @@ async def piar_loop():
                 attachment = cfg.get("piar_attachment", "")
                 chats = cfg["chats"]
                 
-                print(f"🚀 [AUTO-PIAR] Рассылка по {len(chats)} чатам...")
+                print(f"🚀 [AUTO-PIAR] Старт рассылки по {len(chats)} чатам...")
                 batch_size = 30
                 for i in range(0, len(chats), batch_size):
                     batch = chats[i:i + batch_size]
                     tasks = [send_to_chat(peer_id, text, attachment) for peer_id in batch]
                     await asyncio.gather(*tasks)
                     await asyncio.sleep(0.3)
-                print("✅ [AUTO-PIAR] Круг завершен.")
+                print("✅ [AUTO-PIAR] Круг рассылки успешно завершен.")
         except Exception as e:
-            print(f"Ошибка в потоке автопиаpa: {e}")
-        
-        await asyncio.sleep(60)
+            print(f"❌ Ошибка в потоке автопиаpa: {e}")
 
 
 # =====================================================================
-# 4. ГЛАВНЫЙ МЕНЕДЖЕР ЛИЧНЫХ СООБЩЕНИЙ (БЕЗ КОНФЛИКТОВ)
+# 4. МЕНЕДЖЕР УПРАВЛЕНИЯ В ЛИЧНЫХ СООБЩЕНИЯХ
 # =====================================================================
 
 def get_main_keyboard(uid):
@@ -144,17 +145,15 @@ async def private_handler(message: Message):
     is_main = (uid == cfg["main_owner"])
     is_admin = (is_main or uid in cfg["admins"])
 
-    # 1. Сброс состояния или старт
     if text_lower in ["/start", "начать", "меню", "главное меню", "❌ отмена"]:
         if uid in user_states:
             del user_states[uid]
         return await message.answer(
             "👑 **ПАНЕЛЬ УПРАВЛЕНИЯ АВТОПИАРОМ** 👑\n\n"
-            "Выберите нужное действие с помощью кнопок ниже:",
+            "Выберите нужное действие:",
             keyboard=get_main_keyboard(uid)
         )
 
-    # 2. Проверка активных состояний (ожидание ввода текста/данных)
     state = user_states.get(uid)
     if state and is_admin:
         if state == "wait_piar_text":
@@ -200,7 +199,6 @@ async def private_handler(message: Message):
                 return await message.answer("❌ Пользователь не найден в админах.", keyboard=get_main_keyboard(uid))
             return await message.answer("❌ Неверный VK ID.", keyboard=get_main_keyboard(uid))
 
-    # 3. Обработка кнопок меню
     if text_clean == "📊 Статус бота":
         uptime_sec = int(time.time() - START_TIME)
         hours, remainder = divmod(uptime_sec, 3600)
@@ -259,7 +257,6 @@ async def private_handler(message: Message):
             user_states[uid] = "wait_remove_admin"
             return await message.answer("✍️ Введите VK ID администратора для снятия:", keyboard=Keyboard(one_time=False, inline=True).add(Text("❌ Отмена"), color=KeyboardButtonColor.NEGATIVE).get_json())
 
-    # 4. Если пишет обычный пользователь или текст непонятен
     if not is_admin:
         resp = cfg.get("autoresponder", "Здравствуйте! Сообщение получено.")
         return await message.answer(resp)
@@ -280,9 +277,6 @@ async def chat_handler(message: Message):
         cfg["chats"].append(peer_id)
         save_config(cfg)
         print(f"📥 Добавлен новый чат (peer_id: {peer_id})")
-        
-        if cfg.get("piar_active", False):
-            await send_to_chat(peer_id, cfg.get("piar_text", ""), cfg.get("piar_attachment", ""))
 
     text = message.text
     if not text:
