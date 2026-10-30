@@ -63,7 +63,7 @@ user_states = {}
 
 
 # =====================================================================
-# 3. ФУНКЦИЯ РАССЫЛКИ И ФОНОВЫЙ ПОТОК
+# 3. ПОТОК АВТОПИАРА (ИНТЕРВАЛ 30 СЕКУНД)
 # =====================================================================
 async def send_to_chat(peer_id, text, attachment):
     try:
@@ -73,7 +73,7 @@ async def send_to_chat(peer_id, text, attachment):
             attachment=attachment if attachment else None,
             random_id=0
         )
-        print(f"✅ [AUTO-PIAR] Успешно отправлено в чат {peer_id}")
+        print(f"✅ [AUTO-PIAR] Отправлено в чат {peer_id}")
     except Exception as e:
         print(f"⚠️ [AUTO-PIAR] Не удалось отправить в чат {peer_id}: {e}")
 
@@ -81,7 +81,6 @@ async def run_mailing():
     cfg = load_config()
     active = cfg.get("piar_active", False)
     chats = cfg.get("chats", [])
-    print(f"🔄 Проверка пиара: активен={active}, чатов в базе={len(chats)}")
     
     if active and chats:
         text = cfg.get("piar_text", "")
@@ -97,9 +96,10 @@ async def run_mailing():
         print("✅ [AUTO-PIAR] Круг рассылки завершен.")
 
 async def piar_loop():
-    print("🚀 [LOOP] Фоновый поток автопиара запущен.")
+    print("🚀 [LOOP] Фоновый поток автопиара запущен (интервал 30 сек).")
     while True:
-        await asyncio.sleep(60)
+        # Установлено ровно 30 секунд
+        await asyncio.sleep(30)
         try:
             await run_mailing()
         except Exception as e:
@@ -234,7 +234,7 @@ async def private_handler(message: Message):
         
         return await message.answer(
             f"📊 **СТАТУС СИСТЕМЫ:**\n\n"
-            f"• Пиар: {status_piar}\n"
+            f"• Пиар: {status_piar} (каждые 30 сек)\n"
             f"• Чатов в базе: `{chats_count}`\n"
             f"• Аптайм: `{hours}ч {minutes}м {seconds}с`\n"
             f"• Медиа: `{piar_att}`\n\n"
@@ -252,7 +252,6 @@ async def private_handler(message: Message):
             save_config(cfg)
             state_str = "АКТИВЕН 🟢" if cfg["piar_active"] else "ОСТАНОВЛЕН 🔴"
             
-            # ЕСЛИ ВКЛЮЧИЛИ — СРАЗУ ЖЕ ПУЛЯЕМ ПЕРВУЮ РАССЫЛКУ!
             if cfg["piar_active"]:
                 asyncio.run_coroutine_threadsafe(run_mailing(), asyncio.get_event_loop())
                 
