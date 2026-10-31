@@ -6,7 +6,7 @@ from threading import Thread
 from flask import Flask
 
 # =====================================================================
-# 1. ВЕБ-СЕРВЕР ДЛЯ РАБОТЫ 24/7 (RENDER KEEP-ALIVE)
+# 1. МИНИ-СЕРВЕР ДЛЯ УДЕРЖАНИЯ ПОРТА НА RENDER
 # =====================================================================
 app = Flask(__name__)
 START_TIME = time.time()
@@ -98,7 +98,7 @@ Thread(target=auto_piar_worker, daemon=True).start()
 
 
 # =====================================================================
-# 4. LONG POLL API ЦИКЛ (САМ ЧИТАЕТ СООБЩЕНИЯ И КНОПКИ)
+# 4. LONG POLL API ЦИКЛ (ЧИТАЕТ СООБЩЕНИЯ И КНОПКИ)
 # =====================================================================
 def get_group_id():
     try:
@@ -106,23 +106,18 @@ def get_group_id():
             'access_token': TOKEN, 'v': '5.199'
         }).json()
         return res['response'][0]['id']
-    except Exception as e:
-        print(f"Ошибка получения ID группы: {e}")
+    except Exception:
         return None
 
 def vk_longpoll_listener():
     group_id = get_group_id()
     if not group_id:
-        print("❌ Не удалось получить ID группы для Long Poll!")
         return
-    
-    print(f"🟢 Long Poll запущен для группы ID: {group_id}")
     
     server, key, ts = None, None, None
 
     while True:
         try:
-            # Получаем сервер Long Poll
             if not server or not key:
                 lp_res = requests.post('https://api.vk.com/method/groups.getLongPollServer', data={
                     'group_id': group_id,
@@ -138,11 +133,9 @@ def vk_longpoll_listener():
                     time.sleep(5)
                     continue
 
-            # Опрос сервера Long Poll
             resp = requests.get(f"{server}?act=a_check&key={key}&ts={ts}&wait=25", timeout=30).json()
             
             if 'failed' in resp:
-                # Если сессия устарела — сбрасываем, запросим заново
                 server, key = None, None
                 continue
                 
@@ -150,7 +143,6 @@ def vk_longpoll_listener():
             updates = resp.get('updates', [])
 
             for event in updates:
-                # Проверяем новые сообщения
                 if event.get('type') == 'message_new':
                     msg = event.get('object', {}).get('message', {})
                     peer_id = msg.get('peer_id', 0)
@@ -171,13 +163,12 @@ def vk_longpoll_listener():
                         if text_lower in ['/start', 'начать', 'меню', 'главное меню']:
                             send_vk_msg(peer_id, 
                                 "👑 **ПАНЕЛЬ АВТОПИАРА (PRINCE RUSSIA)** 👑\n\n"
-                                "Режим: **Long Poll API** (работает без вебхуков!)\n"
-                                "Управляй ботом через кнопки или команды:\n"
+                                "Режим: **Long Poll API**\n"
                                 "• `/статус` или «Статус бота»\n"
-                                "• `/текст [текст]` — задать текст рассылки\n"
+                                "• `/текст [текст]` — задать текст\n"
                                 "• `/старт` или «🟢 Включить пиар»\n"
                                 "• `/стоп` или «🔴 Выключить пиар»\n"
-                                "• `/список` или «Список чатов»"
+                                "• `/список` — список всех бесед"
                             )
                             
                         elif text_lower in ['/статус', 'статус бота', '📊 статус бота']:
@@ -194,13 +185,13 @@ def vk_longpoll_listener():
                                 state['active'] = True
                                 state['last_run'] = time.time()
                                 save_json(STATE_FILE, state)
-                                send_vk_msg(peer_id, "🚀 Текст сохранен! Авто-рассылка запущена и работает каждую минуту.")
+                                send_vk_msg(peer_id, "🚀 Текст сохранен! Авто-рассылка заведена.")
                             else:
                                 send_vk_msg(peer_id, "⚠️ Напиши текст после команды, например: `/текст Привет!`")
                                 
                         elif text_lower in ['/старт', 'старт', '🟢 включить пиар']:
                             if not os.path.exists(TEXT_FILE):
-                                send_vk_msg(peer_id, "⚠️ Сначала задай текст через команду `/текст [текст]`")
+                                send_vk_msg(peer_id, "⚠️ Сначала задай текст через `/текст [текст]`")
                             else:
                                 state['active'] = True
                                 state['last_run'] = time.time()
@@ -216,12 +207,11 @@ def vk_longpoll_listener():
                             chats = load_json(CHATS_FILE, [])
                             send_vk_msg(peer_id, f"📋 Всего бесед в базе: {len(chats)}")
 
-        except Exception as e:
+        except Exception:
             time.sleep(3)
 
 Thread(target=vk_longpoll_listener, daemon=True).start()
 
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+# Бесконечный цикл, чтобы главный поток не завершался
+while True:
+    time.sleep(3600)
