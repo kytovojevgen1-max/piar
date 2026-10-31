@@ -48,8 +48,8 @@ def save_json(filename, data):
     try:
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Ошибка сохранения {filename}: {e}")
+    except Exception:
+        pass
 
 def send_vk_msg(peer_id, message):
     try:
@@ -61,18 +61,15 @@ def send_vk_msg(peer_id, message):
             'v': '5.199',
             'random_id': int(time.time() * 1000) % 2147483647
         }
-        response = requests.post(url, data=data, timeout=3)
-        return response.json()
-    except Exception as e:
-        print(f"Ошибка отправки в {peer_id}: {e}")
-        return None
+        requests.post(url, data=data, timeout=3)
+    except Exception:
+        pass
 
 
 # =====================================================================
 # 3. ФОНОВЫЙ ПОТОК АВТО-РАССЫЛКИ (КАЖДЫЕ 60 СЕКУНД)
 # =====================================================================
 def auto_piar_worker():
-    print("🚀 [PYTHON PIAR] Фоновый поток рассылки успешно запущен!")
     while True:
         try:
             state = load_json(STATE_FILE, {'active': False, 'last_run': 0})
@@ -94,14 +91,12 @@ def auto_piar_worker():
                     chats = load_json(CHATS_FILE, [])
                     
                     if spam_text and chats:
-                        print(f"🚀 [PIAR] Старт рассылки по {len(chats)} чатам...")
                         for chat_id in chats:
                             target_peer = chat_id if chat_id > 2000000000 else 2000000000 + int(chat_id)
                             send_vk_msg(target_peer, spam_text)
                             time.sleep(0.05)
-                        print("✅ [PIAR] Круг рассылки завершен.")
-        except Exception as e:
-            print(f"❌ Ошибка в потоке пиара: {e}")
+        except Exception:
+            pass
             
         time.sleep(5)
 
@@ -113,9 +108,6 @@ Thread(target=auto_piar_worker, daemon=True).start()
 # =====================================================================
 @app.route('/', methods=['POST'])
 def vk_webhook():
-    # Получаем JSON с правильной обработкой запроса Flask
-    data = requests.request.get_json(silent=True) if hasattr(requests, 'request') else {}
-    from flask import request
     data = request.get_json(silent=True) or {}
     
     if data.get('type') == 'confirmation':
@@ -132,7 +124,6 @@ def vk_webhook():
             if peer_id not in chats:
                 chats.append(peer_id)
                 save_json(CHATS_FILE, chats)
-                print(f"📥 Добавлен новый чат: {peer_id}")
 
         # Команды администратора в ЛС
         if peer_id == ADMIN_ID:
@@ -180,4 +171,4 @@ def vk_webhook():
     return 'ok'
 
 if __name__ == '__main__':
-    print("🚀 Python AutoPiar Bot с правильным токеном запущен!")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
