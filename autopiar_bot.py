@@ -66,7 +66,7 @@ def auto_piar_worker():
             state = load_json(STATE_FILE, {'active': False, 'last_run': 0})
             if state.get('active', False):
                 current_time = time.time()
-                interval = 60  # Интервал рассылки в секундах (1 минута)
+                interval = 60  # Интервал рассылки (1 минута)
                 
                 if current_time - state.get('last_run', 0) > interval:
                     state['last_run'] = current_time
@@ -92,7 +92,7 @@ Thread(target=auto_piar_worker, daemon=True).start()
 
 
 # =====================================================================
-# 4. ВЕБХУК ДЛЯ ПРИЕМА СООБЩЕНИЙ И КОМАНД ОТ ВК
+# 4. ВЕБХУК ДЛЯ ПРИЕМА СООБЩЕНИЙ И КНОПОК ОТ ВК
 # =====================================================================
 @app.route('/', methods=['POST'])
 def vk_webhook():
@@ -105,7 +105,7 @@ def vk_webhook():
     if data.get('type') == 'message_new':
         msg = data.get('object', {}).get('message', {})
         peer_id = msg.get('peer_id', 0)
-        text = msg.get('text', '').strip().lower()
+        text_lower = msg.get('text', '').strip().lower()
         original_text = msg.get('text', '').strip()
         
         # Автоматический сбор бесед
@@ -117,30 +117,27 @@ def vk_webhook():
 
         # Команды администратора и кнопки в ЛС
         if peer_id == ADMIN_ID:
-            args = original_text.split(' ')
-            cmd = args[0].lower() if args else ''
-            
             state = load_json(STATE_FILE, {'active': False, 'last_run': 0})
             
-            if text in ['/start', 'начать', 'меню', 'главное меню']:
+            if text_lower in ['/start', 'начать', 'меню', 'главное меню']:
                 send_vk_msg(peer_id, 
                     "👑 **ПАНЕЛЬ АВТОПИАРА (PRINCE RUSSIA)** 👑\n\n"
-                    "Доступные команды:\n"
-                    "• `/статус` — проверить работу и чаты\n"
+                    "Управляй ботом через кнопки или команды:\n"
+                    "• `/статус` или «Статус бота»\n"
                     "• `/текст [текст]` — задать текст рассылки\n"
-                    "• `/старт` — запустить рассылку\n"
-                    "• `/стоп` — остановить рассылку\n"
-                    "• `/список` — список всех бесед"
+                    "• `/старт` или «🟢 Включить пиар»\n"
+                    "• `/стоп` или «🔴 Выключить пиар»\n"
+                    "• `/список` или «Список чатов»"
                 )
                 
-            elif cmd == '/статус' or text == 'статус':
+            elif text_lower in ['/статус', 'статус бота', '📊 статус бота']:
                 chats = load_json(CHATS_FILE, [])
                 active_str = "🟢 Активен (каждые 60 сек)" if state.get('active') else "🔴 Остановлен"
                 cur_text = open(TEXT_FILE, 'r', encoding='utf-8').read() if os.path.exists(TEXT_FILE) else 'Не задан'
-                send_vk_msg(peer_id, f"Статус: {active_str}\nБесед в базе: {len(chats)}\n\nТекущий текст:\n{cur_text}")
+                send_vk_msg(peer_id, f"📊 **СТАТУС:**\n• Пиар: {active_str}\n• Бесед в базе: {len(chats)}\n\n💬 **Текст:**\n{cur_text}")
                 
-            elif cmd == '/текст':
-                new_text = original_text[len(args[0]):].strip()
+            elif text_lower.startswith('/текст'):
+                new_text = original_text[6:].strip()
                 if new_text:
                     with open(TEXT_FILE, 'w', encoding='utf-8') as f:
                         f.write(new_text)
@@ -149,25 +146,25 @@ def vk_webhook():
                     save_json(STATE_FILE, state)
                     send_vk_msg(peer_id, "🚀 Текст сохранен! Авто-рассылка запущена и работает каждую минуту.")
                 else:
-                    send_vk_msg(peer_id, "⚠️ Напиши текст после команды `/текст`")
+                    send_vk_msg(peer_id, "⚠️ Напиши текст после команды, например: `/текст Привет!`")
                     
-            elif cmd == '/старт' or text == 'старт':
+            elif text_lower in ['/старт', 'старт', '🟢 включить пиар']:
                 if not os.path.exists(TEXT_FILE):
-                    send_vk_msg(peer_id, "⚠️ Сначала задай текст через `/текст [текст]`")
+                    send_vk_msg(peer_id, "⚠️ Сначала задай текст через команду `/текст [текст]`")
                 else:
                     state['active'] = True
                     state['last_run'] = time.time()
                     save_json(STATE_FILE, state)
-                    send_vk_msg(peer_id, "🟢 Авто-рассылка возобновлена!")
+                    send_vk_msg(peer_id, "🟢 Авто-рассылка успешно включена!")
                     
-            elif cmd == '/стоп' or text == 'стоп':
+            elif text_lower in ['/стоп', 'стоп', '🔴 выключить пиар']:
                 state['active'] = False
                 save_json(STATE_FILE, state)
                 send_vk_msg(peer_id, "🛑 Авто-рассылка остановлена.")
                 
-            elif cmd == '/список' or text == 'список':
+            elif text_lower in ['/список', 'список чатов', '📋 список чатов']:
                 chats = load_json(CHATS_FILE, [])
-                send_vk_msg(peer_id, f"📋 Всего бесед в базе: {len(chats)}")
+                send_vk_msg(peer_id, f"📋 Всего бесед в базе: {len(chats)}\n`{chats}`")
 
     return 'ok'
 
