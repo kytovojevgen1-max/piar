@@ -3,17 +3,23 @@ import json
 import time
 import requests
 from threading import Thread
-from flask import Flask, request
+from flask import Flask
 
 # =====================================================================
-# 1. ВЕБ-СЕРВЕР ДЛЯ РАБОТЫ 24/7 (RENDER)
+# 1. ВЕБ-СЕРВЕР ДЛЯ РАБОТЫ 24/7 (RENDER KEEP-ALIVE)
 # =====================================================================
 app = Flask(__name__)
 START_TIME = time.time()
 
 @app.route('/')
 def home():
-    return "Prince Russia AutoPiar Server: ONLINE"
+    return "Prince Russia AutoPiar LongPoll Server: ONLINE"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+Thread(target=run_flask, daemon=True).start()
 
 
 # =====================================================================
@@ -92,81 +98,129 @@ Thread(target=auto_piar_worker, daemon=True).start()
 
 
 # =====================================================================
-# 4. ВЕБХУК ДЛЯ ПРИЕМА СООБЩЕНИЙ И КНОПОК ОТ ВК
+# 4. LONG POLL API ЦИКЛ (САМ ЧИТАЕТ СООБЩЕНИЯ И КНОПКИ)
 # =====================================================================
-@app.route('/', methods=['POST'])
-def vk_webhook():
-    data = request.get_json(silent=True) or {}
-    
-    # Подтверждение сервера для Callback API ВК
-    if data.get('type') == 'confirmation':
-        return '2a390db5'
-    
-    if data.get('type') == 'message_new':
-        msg = data.get('object', {}).get('message', {})
-        peer_id = msg.get('peer_id', 0)
-        text_lower = msg.get('text', '').strip().lower()
-        original_text = msg.get('text', '').strip()
-        
-        # Автоматический сбор бесед
-        if peer_id > 2000000000:
-            chats = load_json(CHATS_FILE, [])
-            if peer_id not in chats:
-                chats.append(peer_id)
-                save_json(CHATS_FILE, chats)
+def get_group_id():
+    try:
+        res = requests.post('https://api.vk.com/method/groups.getById', data={
+            'access_token': TOKEN, 'v': '5.199'
+        }).json()
+        return res['response'][0]['id']
+    except Exception as e:
+        print(f"Ошибка получения ID группы: {e}")
+        return None
 
-        # Команды администратора и кнопки в ЛС
-        if peer_id == ADMIN_ID:
-            state = load_json(STATE_FILE, {'active': False, 'last_run': 0})
+def vk_longpoll_listener():
+    group_id = get_group_id()
+    if not group_id:
+        print("❌ Не удалось получить ID группы для Long Poll!")
+        return
+    
+    print(f"🟢 Long Poll запущен для группы ID: {group_id}")
+    
+    server, key, ts = None, None, None
+
+    while True:
+        try:
+            # Получаем сервер Long Poll
+            if not server or not key:
+                lp_res = requests.post('https://api.vk.com/method/groups.getLongPollServer', data={
+                    'group_id': group_id,
+                    'access_token': TOKEN,
+                    'v': '5.199'
+                }).json()
+                
+                if 'response' in lp_res:
+                    server = lp_res['response']['server']
+                    key = lp_res['response']['key']
+                    ts = lp_res['response']['ts']
+                else:
+                    time.sleep(5)
+                    continue
+
+            # Опрос сервера Long Poll
+            resp = requests.get(f"{server}?act=a_check&key={key}&ts={ts}&wait=25", timeout=30).json()
             
-            if text_lower in ['/start', 'начать', 'меню', 'главное меню']:
-                send_vk_msg(peer_id, 
-                    "👑 **ПАНЕЛЬ АВТОПИАРА (PRINCE RUSSIA)** 👑\n\n"
-                    "Управляй ботом через кнопки или команды:\n"
-                    "• `/статус` или «Статус бота»\n"
-                    "• `/текст [текст]` — задать текст рассылки\n"
-                    "• `/старт` или «🟢 Включить пиар»\n"
-                    "• `/стоп` или «🔴 Выключить пиар»\n"
-                    "• `/список` или «Список чатов»"
-                )
+            if 'failed' in resp:
+                # Если сессия устарела — сбрасываем, запросим заново
+                server, key = None, None
+                continue
                 
-            elif text_lower in ['/статус', 'статус бота', '📊 статус бота']:
-                chats = load_json(CHATS_FILE, [])
-                active_str = "🟢 Активен (каждые 60 сек)" if state.get('active') else "🔴 Остановлен"
-                cur_text = open(TEXT_FILE, 'r', encoding='utf-8').read() if os.path.exists(TEXT_FILE) else 'Не задан'
-                send_vk_msg(peer_id, f"📊 **СТАТУС:**\n• Пиар: {active_str}\n• Бесед в базе: {len(chats)}\n\n💬 **Текст:**\n{cur_text}")
-                
-            elif text_lower.startswith('/текст'):
-                new_text = original_text[6:].strip()
-                if new_text:
-                    with open(TEXT_FILE, 'w', encoding='utf-8') as f:
-                        f.write(new_text)
-                    state['active'] = True
-                    state['last_run'] = time.time()
-                    save_json(STATE_FILE, state)
-                    send_vk_msg(peer_id, "🚀 Текст сохранен! Авто-рассылка запущена и работает каждую минуту.")
-                else:
-                    send_vk_msg(peer_id, "⚠️ Напиши текст после команды, например: `/текст Привет!`")
-                    
-            elif text_lower in ['/старт', 'старт', '🟢 включить пиар']:
-                if not os.path.exists(TEXT_FILE):
-                    send_vk_msg(peer_id, "⚠️ Сначала задай текст через команду `/текст [текст]`")
-                else:
-                    state['active'] = True
-                    state['last_run'] = time.time()
-                    save_json(STATE_FILE, state)
-                    send_vk_msg(peer_id, "🟢 Авто-рассылка успешно включена!")
-                    
-            elif text_lower in ['/стоп', 'стоп', '🔴 выключить пиар']:
-                state['active'] = False
-                save_json(STATE_FILE, state)
-                send_vk_msg(peer_id, "🛑 Авто-рассылка остановлена.")
-                
-            elif text_lower in ['/список', 'список чатов', '📋 список чатов']:
-                chats = load_json(CHATS_FILE, [])
-                send_vk_msg(peer_id, f"📋 Всего бесед в базе: {len(chats)}\n`{chats}`")
+            ts = resp.get('ts', ts)
+            updates = resp.get('updates', [])
 
-    return 'ok'
+            for event in updates:
+                # Проверяем новые сообщения
+                if event.get('type') == 'message_new':
+                    msg = event.get('object', {}).get('message', {})
+                    peer_id = msg.get('peer_id', 0)
+                    text_lower = msg.get('text', '').strip().lower()
+                    original_text = msg.get('text', '').strip()
+                    
+                    # Автоматический сбор бесед
+                    if peer_id > 2000000000:
+                        chats = load_json(CHATS_FILE, [])
+                        if peer_id not in chats:
+                            chats.append(peer_id)
+                            save_json(CHATS_FILE, chats)
+
+                    # Команды администратора и кнопки в ЛС
+                    if peer_id == ADMIN_ID:
+                        state = load_json(STATE_FILE, {'active': False, 'last_run': 0})
+                        
+                        if text_lower in ['/start', 'начать', 'меню', 'главное меню']:
+                            send_vk_msg(peer_id, 
+                                "👑 **ПАНЕЛЬ АВТОПИАРА (PRINCE RUSSIA)** 👑\n\n"
+                                "Режим: **Long Poll API** (работает без вебхуков!)\n"
+                                "Управляй ботом через кнопки или команды:\n"
+                                "• `/статус` или «Статус бота»\n"
+                                "• `/текст [текст]` — задать текст рассылки\n"
+                                "• `/старт` или «🟢 Включить пиар»\n"
+                                "• `/стоп` или «🔴 Выключить пиар»\n"
+                                "• `/список` или «Список чатов»"
+                            )
+                            
+                        elif text_lower in ['/статус', 'статус бота', '📊 статус бота']:
+                            chats = load_json(CHATS_FILE, [])
+                            active_str = "🟢 Активен (каждые 60 сек)" if state.get('active') else "🔴 Остановлен"
+                            cur_text = open(TEXT_FILE, 'r', encoding='utf-8').read() if os.path.exists(TEXT_FILE) else 'Не задан'
+                            send_vk_msg(peer_id, f"📊 **СТАТУС:**\n• Пиар: {active_str}\n• Бесед в базе: {len(chats)}\n\n💬 **Текст:**\n{cur_text}")
+                            
+                        elif text_lower.startswith('/текст'):
+                            new_text = original_text[6:].strip()
+                            if new_text:
+                                with open(TEXT_FILE, 'w', encoding='utf-8') as f:
+                                    f.write(new_text)
+                                state['active'] = True
+                                state['last_run'] = time.time()
+                                save_json(STATE_FILE, state)
+                                send_vk_msg(peer_id, "🚀 Текст сохранен! Авто-рассылка запущена и работает каждую минуту.")
+                            else:
+                                send_vk_msg(peer_id, "⚠️ Напиши текст после команды, например: `/текст Привет!`")
+                                
+                        elif text_lower in ['/старт', 'старт', '🟢 включить пиар']:
+                            if not os.path.exists(TEXT_FILE):
+                                send_vk_msg(peer_id, "⚠️ Сначала задай текст через команду `/текст [текст]`")
+                            else:
+                                state['active'] = True
+                                state['last_run'] = time.time()
+                                save_json(STATE_FILE, state)
+                                send_vk_msg(peer_id, "🟢 Авто-рассылка успешно включена!")
+                                
+                        elif text_lower in ['/стоп', 'стоп', '🔴 выключить пиар']:
+                            state['active'] = False
+                            save_json(STATE_FILE, state)
+                            send_vk_msg(peer_id, "🛑 Авто-рассылка остановлена.")
+                            
+                        elif text_lower in ['/список', 'список чатов', '📋 список чатов']:
+                            chats = load_json(CHATS_FILE, [])
+                            send_vk_msg(peer_id, f"📋 Всего бесед в базе: {len(chats)}")
+
+        except Exception as e:
+            time.sleep(3)
+
+Thread(target=vk_longpoll_listener, daemon=True).start()
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
