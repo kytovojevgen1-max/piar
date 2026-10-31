@@ -25,7 +25,7 @@ Thread(target=run_flask, daemon=True).start()
 # =====================================================================
 # 2. НАСТРОЙКИ И ФАЙЛЫ
 # =====================================================================
-TOKEN = 'vk1.a.TnKXDAbLse2U20_TT4Zk4ebar69t1320OmNPJCUtZaNNOgVtiUJYXCGblKFccEyc3SKwljisxXghnw1vcPyyEd1McI6Ykbl1zEM3H_surC4Xlq4A-VV86SN4qKCACGepMxSAYMpWtswkRo1FlUgad0YiMjWwzRTm80lwTRdqJ5BUUjcuQ9rZnrLHgBd4LYoaZTwHeKBGzIQWdnPZXxYeLw'
+TOKEN = 'vk1.a.q9RtV2818QWiCSFGgHLzR4gQr2xQ2fSIQKFbsrcoEudGaNSukxF_w-BSKNVvpWJhE6hON3wI9NBU5i96-0GVe0LTJ3so3jVMTfM6gQSZyWHkMO0187j0xC3ymyobpNhdxOUEAq5XsVnAdij_c9plT0lBdW-qD9cWxVw-Cp5ip7pCSkXvWBmAeJZ13rY2llgn3IczHjaPXOadwgLarLb96Q'
 ADMIN_ID = 897082738
 
 CHATS_FILE = 'chats.json'
