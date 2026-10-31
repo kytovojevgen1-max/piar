@@ -15,7 +15,7 @@ START_TIME = time.time()
 def home():
     return "Prince Russia AutoPiar Server: ONLINE"
 
-# Запускаем Flask только один раз в главном потоке для Render
+
 # =====================================================================
 # 2. НАСТРОЙКИ И ФАЙЛЫ
 # =====================================================================
@@ -105,7 +105,8 @@ def vk_webhook():
     if data.get('type') == 'message_new':
         msg = data.get('object', {}).get('message', {})
         peer_id = msg.get('peer_id', 0)
-        text = msg.get('text', '').strip()
+        text = msg.get('text', '').strip().lower()
+        original_text = msg.get('text', '').strip()
         
         # Автоматический сбор бесед
         if peer_id > 2000000000:
@@ -114,21 +115,32 @@ def vk_webhook():
                 chats.append(peer_id)
                 save_json(CHATS_FILE, chats)
 
-        # Команды администратора в ЛС
+        # Команды администратора и кнопки в ЛС
         if peer_id == ADMIN_ID:
-            args = text.split(' ')
+            args = original_text.split(' ')
             cmd = args[0].lower() if args else ''
             
             state = load_json(STATE_FILE, {'active': False, 'last_run': 0})
             
-            if cmd == '/статус':
+            if text in ['/start', 'начать', 'меню', 'главное меню']:
+                send_vk_msg(peer_id, 
+                    "👑 **ПАНЕЛЬ АВТОПИАРА (PRINCE RUSSIA)** 👑\n\n"
+                    "Доступные команды:\n"
+                    "• `/статус` — проверить работу и чаты\n"
+                    "• `/текст [текст]` — задать текст рассылки\n"
+                    "• `/старт` — запустить рассылку\n"
+                    "• `/стоп` — остановить рассылку\n"
+                    "• `/список` — список всех бесед"
+                )
+                
+            elif cmd == '/статус' or text == 'статус':
                 chats = load_json(CHATS_FILE, [])
                 active_str = "🟢 Активен (каждые 60 сек)" if state.get('active') else "🔴 Остановлен"
                 cur_text = open(TEXT_FILE, 'r', encoding='utf-8').read() if os.path.exists(TEXT_FILE) else 'Не задан'
                 send_vk_msg(peer_id, f"Статус: {active_str}\nБесед в базе: {len(chats)}\n\nТекущий текст:\n{cur_text}")
                 
             elif cmd == '/текст':
-                new_text = text[len(args[0]):].strip()
+                new_text = original_text[len(args[0]):].strip()
                 if new_text:
                     with open(TEXT_FILE, 'w', encoding='utf-8') as f:
                         f.write(new_text)
@@ -139,7 +151,7 @@ def vk_webhook():
                 else:
                     send_vk_msg(peer_id, "⚠️ Напиши текст после команды `/текст`")
                     
-            elif cmd == '/старт':
+            elif cmd == '/старт' or text == 'старт':
                 if not os.path.exists(TEXT_FILE):
                     send_vk_msg(peer_id, "⚠️ Сначала задай текст через `/текст [текст]`")
                 else:
@@ -148,12 +160,12 @@ def vk_webhook():
                     save_json(STATE_FILE, state)
                     send_vk_msg(peer_id, "🟢 Авто-рассылка возобновлена!")
                     
-            elif cmd == '/стоп':
+            elif cmd == '/стоп' or text == 'стоп':
                 state['active'] = False
                 save_json(STATE_FILE, state)
                 send_vk_msg(peer_id, "🛑 Авто-рассылка остановлена.")
                 
-            elif cmd == '/список':
+            elif cmd == '/список' or text == 'список':
                 chats = load_json(CHATS_FILE, [])
                 send_vk_msg(peer_id, f"📋 Всего бесед в базе: {len(chats)}")
 
