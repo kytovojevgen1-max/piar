@@ -63,11 +63,10 @@ user_states = {}
 
 
 # =====================================================================
-# 3. АВТОМАТИЧЕСКИЙ СБОР ЧАТОВ И ПОТОК РАССЫЛКИ (30 СЕК)
+# 3. АВТОМАТИЧЕСКИЙ СБОР ЧАТОВ И УЛЬТРАБЫСТРЫЙ ПОТОК (15 СЕК)
 # =====================================================================
 async def auto_fetch_chats():
     try:
-        # Автоматически получаем все диалоги, где есть бот
         conversations = await bot.api.messages.get_conversations(count=200, filter="all")
         cfg = load_config()
         current_chats = set(cfg.get("chats", []))
@@ -75,7 +74,6 @@ async def auto_fetch_chats():
         added_count = 0
         for item in conversations.items:
             peer_id = item.conversation.peer.id
-            # Если это беседа (peer_id > 2000000000)
             if peer_id > 2000000000:
                 if peer_id not in current_chats:
                     current_chats.add(peer_id)
@@ -84,7 +82,7 @@ async def auto_fetch_chats():
         if added_count > 0:
             cfg["chats"] = list(current_chats)
             save_config(cfg)
-            print(f"📥 [AUTO-SYNC] Автоматически найдено и добавлено новых чатов: {added_count}. Всего в базе: {len(cfg['chats'])}")
+            print(f"📥 [AUTO-SYNC] Автоматически найдено новых чатов: {added_count}. Всего: {len(cfg['chats'])}")
     except Exception as e:
         print(f"⚠️ Ошибка автосбора чатов: {e}")
 
@@ -96,35 +94,39 @@ async def send_to_chat(peer_id, text, attachment):
             attachment=attachment if attachment else None,
             random_id=0
         )
-        print(f"✅ [AUTO-PIAR] Отправлено в чат {peer_id}")
+        print(f"🔥 [UPPER-PIAR] Успешно отправлено в чат {peer_id}")
     except Exception as e:
-        print(f"⚠️ [AUTO-PIAR] Ошибка отправки в чат {peer_id}: {e}")
+        print(f"⚠️ [UPPER-PIAR] Ошибка отправки в чат {peer_id}: {e}")
 
 async def run_mailing():
-    # Перед каждым кругом автоматически сканируем беседы
     await auto_fetch_chats()
     
     cfg = load_config()
     active = cfg.get("piar_active", False)
     chats = cfg.get("chats", [])
     
+    print(f"🔄 [ПРОВЕРКА] Пиар активен: {active} | Бесед в базе: {len(chats)}")
+    
     if active and chats:
         text = cfg.get("piar_text", "")
         attachment = cfg.get("piar_attachment", "")
         
-        print(f"🚀 [AUTO-PIAR] Старт рассылки по {len(chats)} чатам...")
+        print(f"🚀 [UPPER-PIAR] Погнали раунд рассылки по {len(chats)} чатам!")
         batch_size = 30
         for i in range(0, len(chats), batch_size):
             batch = chats[i:i + batch_size]
             tasks = [send_to_chat(peer_id, text, attachment) for peer_id in batch]
             await asyncio.gather(*tasks)
-            await asyncio.sleep(0.3)
-        print("✅ [AUTO-PIAR] Круг рассылки завершен.")
+            await asyncio.sleep(0.1)
+        print("✅ [UPPER-PIAR] Раунд успешно завершен.")
+    else:
+        print("⚠️ [UPPER-PIAR] Рассылка пропущена: пиар выключен или нет чатов в базе.")
 
 async def piar_loop():
-    print("🚀 [LOOP] Автономный поток автопиара запущен (интервал 30 сек).")
+    print("🚀 [LOOP] Ультимативный поток автопиара запущен (интервал 15 СЕКУНД). Уффф!")
     while True:
-        await asyncio.sleep(30)
+        # Ровно 15 секунд задержки
+        await asyncio.sleep(15)
         try:
             await run_mailing()
         except Exception as e:
@@ -186,8 +188,8 @@ async def private_handler(message: Message):
         if uid in user_states:
             del user_states[uid]
         return await message.answer(
-            "👑 **ПАНЕЛЬ УПРАВЛЕНИЯ АВТОПИАРОМ** 👑\n\n"
-            "Бот работает полностью в автоматическом режиме:",
+            "👑 **УЛЬТИМАТИВНЫЙ АВТОПИАР (15 СЕК)** 👑\n\n"
+            "Система работает полностью на максималках:",
             keyboard=get_main_keyboard(uid)
         )
 
@@ -244,8 +246,8 @@ async def private_handler(message: Message):
         
         return await message.answer(
             f"📊 **СТАТУС СИСТЕМЫ:**\n\n"
-            f"• Пиар: {status_piar} (каждые 30 сек)\n"
-            f"• Авто-чатов в базе: `{chats_count}`\n"
+            f"• Пиар: {status_piar} (каждые 15 СЕКУНД 🚀)\n"
+            f"• Чатов в базе: `{chats_count}`\n"
             f"• Аптайм: `{hours}ч {minutes}м {seconds}с`\n"
             f"• Медиа: `{piar_att}`\n\n"
             f"💬 **Текст рассылки:**\n{piar_text}",
@@ -254,12 +256,12 @@ async def private_handler(message: Message):
 
     if text_clean == "📋 Список чатов":
         chats = cfg.get("chats", [])
-        return await message.answer(f"📋 **Авто-найденные чаты ({len(chats)}):**\n`{chats}`", keyboard=get_main_keyboard(uid))
+        return await message.answer(f"📋 **Чаты в базе ({len(chats)}):**\n`{chats}`", keyboard=get_main_keyboard(uid))
 
     if text_clean == "🔄 Обновить чаты":
         await auto_fetch_chats()
         cfg = load_config()
-        return await message.answer(f"🔄 Список чатов принудительно обновлен! Найдено бесед: `{len(cfg.get('chats', []))}`", keyboard=get_main_keyboard(uid))
+        return await message.answer(f"🔄 Чаты обновлены! Найдено бесед: `{len(cfg.get('chats', []))}`", keyboard=get_main_keyboard(uid))
 
     if is_admin:
         if text_clean in ["🟢 Включить пиар", "🔴 Выключить пиар"]:
@@ -338,5 +340,5 @@ async def chat_handler(message: Message):
 
 
 if __name__ == "__main__":
-    print("🚀 AutoPiar Bot успешно запущен!")
+    print("🚀 AutoPiar Bot запущен на 15 секунд!")
     bot.run_forever()
