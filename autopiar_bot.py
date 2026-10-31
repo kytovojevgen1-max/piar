@@ -17,7 +17,7 @@ def home():
     uptime_sec = int(time.time() - START_TIME)
     hours, remainder = divmod(uptime_sec, 3600)
     minutes, seconds = divmod(remainder, 60)
-    return f"Highload AutoPiar Server: ONLINE 24/7 | Uptime: {hours}h {minutes}m {seconds}s"
+    return f"AutoPiar Server: ONLINE | Uptime: {hours}h {minutes}m {seconds}s"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -47,7 +47,7 @@ def load_config():
         "piar_text": "📢 Привет! Это ультимативный автопиар-бот.\n🌐 Максимальный охват бесед!",
         "piar_attachment": "", 
         "autoresponder": "🤖 Здравствуйте! Сообщение получено. Администратор ответит вам в ближайшее время.",
-        "piar_active": True
+        "piar_active": False
     }
 
 def save_config(data):
@@ -63,7 +63,7 @@ user_states = {}
 
 
 # =====================================================================
-# 3. ВСТРОЕННЫЙ ЦИКЛ РАССЫЛКИ (КАЖДЫЕ 15 СЕКУНД)
+# 3. ФОНОВЫЙ ЦИКЛ РАССЫЛКИ (КАЖДЫЕ 15 СЕКУНД)
 # =====================================================================
 async def send_to_chat(peer_id, text, attachment):
     try:
@@ -75,7 +75,7 @@ async def send_to_chat(peer_id, text, attachment):
         )
         print(f"🔥 [PIAR] Успешно отправлено в чат {peer_id}")
     except Exception as e:
-        print(f"⚠️ [PIAR] Ошибка отправки в чат {peer_id}: {e}")
+        print(f"⚠️ [PIAR] Не удалось отправить в чат {peer_id}: {e}")
 
 async def auto_fetch_chats():
     try:
@@ -97,14 +97,14 @@ async def auto_fetch_chats():
         if added > 0 or len(current_chats) != len(cfg.get("chats", [])):
             cfg["chats"] = list(current_chats)
             save_config(cfg)
-            print(f"📥 [AUTO-SYNC] Найдено бесед: {len(cfg['chats'])}")
+            print(f"📥 [AUTO-SYNC] Обновлено бесед в базе: {len(cfg['chats'])}")
     except Exception as e:
         print(f"⚠️ Ошибка автосбора бесед: {e}")
 
 async def background_piar_loop():
-    print("🚀 [LOOP] Встроенный фоновый цикл пиара запущен (15 секунд).")
-    await asyncio.sleep(5) # Пауза на старт бота
+    print("🚀 [LOOP] Главный цикл автопиара запущен (интервал 15 секунд).")
     while True:
+        await asyncio.sleep(15)
         try:
             await auto_fetch_chats()
             cfg = load_config()
@@ -117,17 +117,14 @@ async def background_piar_loop():
                 for peer_id in chats:
                     await send_to_chat(peer_id, text, attachment)
                     await asyncio.sleep(0.1)
-                print("✅ [PIAR] Раунд завершен.")
+                print("✅ [PIAR] Раунд рассылки успешно завершен.")
         except Exception as e:
-            print(f"❌ Ошибка в цикле пиара: {e}")
-        
-        await asyncio.sleep(15)
+            print(f"❌ Ошибка в фоновом цикле пиара: {e}")
 
 
 # =====================================================================
-# 4. ПАНЕЛЬ УПРАВЛЕНИЯ В ЛИЧНЫХ СООБЩЕНИЯХ
+# 4. КЛАВИАТУРА И МЕНЕДЖЕР УПРАВЛЕНИЯ
 # =====================================================================
-
 def get_main_keyboard(uid):
     cfg = load_config()
     is_main = (uid == cfg["main_owner"])
@@ -175,7 +172,7 @@ async def private_handler(message: Message):
             del user_states[uid]
         return await message.answer(
             "👑 **УЛЬТИМАТИВНЫЙ АВТОПИАР (15 СЕК)** 👑\n\n"
-            "Панель управления:",
+            "Панель управления активна:",
             keyboard=get_main_keyboard(uid)
         )
 
@@ -254,6 +251,10 @@ async def private_handler(message: Message):
             cfg["piar_active"] = not cfg.get("piar_active", False)
             save_config(cfg)
             state_str = "АКТИВЕН 🟢" if cfg["piar_active"] else "ОСТАНОВЛЕН 🔴"
+            
+            if cfg["piar_active"]:
+                asyncio.create_task(auto_fetch_chats())
+                
             return await message.answer(f"⚙️ Пиар теперь: {state_str}", keyboard=get_main_keyboard(uid))
         
         if text_clean == "⚙️ Настроить текст":
@@ -304,7 +305,7 @@ async def chat_handler(message: Message):
 
 
 if __name__ == "__main__":
-    print("🚀 Запуск бота с встроенным асинхронным циклом...")
+    print("🚀 Запуск бота с чистым асинхронным циклом...")
     loop = asyncio.get_event_loop()
     loop.create_task(background_piar_loop())
     bot.run_forever()
