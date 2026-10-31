@@ -43,11 +43,11 @@ def load_config():
         "token": "vk1.a.q9RtV2818QWiCSFGgHLzR4gQr2xQ2fSIQKFbsrcoEudGaNSukxF_w-BSKNVvpWJhE6hON3wI9NBU5i96-0GVe0LTJ3so3jVMTfM6gQSZyWHkMO0187j0xC3ymyobpNhdxOUEAq5XsVnAdij_c9plT0lBdW-qD9cWxVw-Cp5ip7pCSkXvWBmAeJZ13rY2llgn3IczHjaPXOadwgLarLb96Q",
         "main_owner": 897082738,
         "admins": [897082738],
-        "chats": [],
+        "chats": [], # Сюда добавятся чаты
         "piar_text": "📢 Привет! Это ультимативный автопиар-бот.\n🌐 Максимальный охват бесед!",
         "piar_attachment": "", 
         "autoresponder": "🤖 Здравствуйте! Сообщение получено. Администратор ответит вам в ближайшее время.",
-        "piar_active": False
+        "piar_active": True # Сразу включаем по умолчанию для теста!
     }
 
 def save_config(data):
@@ -63,7 +63,7 @@ user_states = {}
 
 
 # =====================================================================
-# 3. ПОТОК АВТОПИАРА (ИНТЕРВАЛ 30 СЕКУНД)
+# 3. ПОТОК АВТОПИАРА (ИНТЕРВАЛ 30 СЕКУНД С ЛОГАМИ)
 # =====================================================================
 async def send_to_chat(peer_id, text, attachment):
     try:
@@ -73,32 +73,32 @@ async def send_to_chat(peer_id, text, attachment):
             attachment=attachment if attachment else None,
             random_id=0
         )
-        print(f"✅ [AUTO-PIAR] Отправлено в чат {peer_id}")
+        print(f"✅ [AUTO-PIAR] Успешно отправлено в чат {peer_id}")
     except Exception as e:
-        print(f"⚠️ [AUTO-PIAR] Не удалось отправить в чат {peer_id}: {e}")
+        print(f"⚠️ [AUTO-PIAR] Ошибка отправки в чат {peer_id}: {e}")
 
 async def run_mailing():
     cfg = load_config()
     active = cfg.get("piar_active", False)
     chats = cfg.get("chats", [])
     
+    print(f"🔄 [ПРОВЕРКА ПИАРА] Статус: {'АКТИВЕН' if active else 'ВЫКЛЮЧЕН'} | Чатов в базе: {chats}")
+    
     if active and chats:
         text = cfg.get("piar_text", "")
         attachment = cfg.get("piar_attachment", "")
         
-        print(f"🚀 [AUTO-PIAR] Старт рассылки по {len(chats)} чатам...")
-        batch_size = 30
-        for i in range(0, len(chats), batch_size):
-            batch = chats[i:i + batch_size]
-            tasks = [send_to_chat(peer_id, text, attachment) for peer_id in batch]
-            await asyncio.gather(*tasks)
+        print(f"🚀 [AUTO-PIAR] Рассылка по чатам: {chats}")
+        for peer_id in chats:
+            await send_to_chat(peer_id, text, attachment)
             await asyncio.sleep(0.3)
-        print("✅ [AUTO-PIAR] Круг рассылки завершен.")
+        print("✅ [AUTO-PIAR] Круг завершен.")
+    else:
+        print("⚠️ [AUTO-PIAR] Рассылка пропущена: пиар выключен или список чатов пуст!")
 
 async def piar_loop():
     print("🚀 [LOOP] Фоновый поток автопиара запущен (интервал 30 сек).")
     while True:
-        # Установлено ровно 30 секунд
         await asyncio.sleep(30)
         try:
             await run_mailing()
