@@ -13,10 +13,7 @@ START_TIME = time.time()
 
 @app.route('/')
 def home():
-    uptime_sec = int(time.time() - START_TIME)
-    hours, remainder = divmod(uptime_sec, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"Prince Russia AutoPiar Server: ONLINE | Uptime: {hours}h {minutes}m {seconds}s"
+    return "Prince Russia AutoPiar Server: ONLINE"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -73,28 +70,25 @@ def auto_piar_worker():
     while True:
         try:
             state = load_json(STATE_FILE, {'active': False, 'last_run': 0})
-            
             if state.get('active', False):
                 current_time = time.time()
-                interval = 60 # Интервал в секундах
+                interval = 60  # Интервал рассылки в секундах (1 минута)
                 
                 if current_time - state.get('last_run', 0) > interval:
                     state['last_run'] = current_time
                     save_json(STATE_FILE, state)
                     
+                    spam_text = ""
                     if os.path.exists(TEXT_FILE):
                         with open(TEXT_FILE, 'r', encoding='utf-8') as f:
                             spam_text = f.read().strip()
-                    else:
-                        spam_text = ""
-                        
+                            
                     chats = load_json(CHATS_FILE, [])
-                    
                     if spam_text and chats:
                         for chat_id in chats:
                             target_peer = chat_id if chat_id > 2000000000 else 2000000000 + int(chat_id)
                             send_vk_msg(target_peer, spam_text)
-                            time.sleep(0.05)
+                            time.sleep(0.03)
         except Exception:
             pass
             
@@ -110,6 +104,7 @@ Thread(target=auto_piar_worker, daemon=True).start()
 def vk_webhook():
     data = request.get_json(silent=True) or {}
     
+    # Подтверждение сервера для Callback API ВК
     if data.get('type') == 'confirmation':
         return '2a390db5'
     
@@ -136,7 +131,7 @@ def vk_webhook():
                 chats = load_json(CHATS_FILE, [])
                 active_str = "🟢 Активен (каждые 60 сек)" if state.get('active') else "🔴 Остановлен"
                 cur_text = open(TEXT_FILE, 'r', encoding='utf-8').read() if os.path.exists(TEXT_FILE) else 'Не задан'
-                send_vk_msg(peer_id, f"Статус: {active_str}\nБесед в базе: {len(chats)}\n\nТекст:\n{cur_text}")
+                send_vk_msg(peer_id, f"Статус: {active_str}\nБесед в базе: {len(chats)}\n\nТекущий текст:\n{cur_text}")
                 
             elif cmd == '/текст':
                 new_text = text[len(args[0]):].strip()
@@ -146,7 +141,7 @@ def vk_webhook():
                     state['active'] = True
                     state['last_run'] = time.time()
                     save_json(STATE_FILE, state)
-                    send_vk_msg(peer_id, "🚀 Текст сохранен! Авто-рассылка на Python запущена.")
+                    send_vk_msg(peer_id, "🚀 Текст сохранен! Авто-рассылка запущена и работает каждую минуту.")
                 else:
                     send_vk_msg(peer_id, "⚠️ Напиши текст после команды `/текст`")
                     
