@@ -3,7 +3,7 @@ import json
 import time
 import requests
 from threading import Thread
-from flask import Flask
+from flask import Flask, request
 
 # =====================================================================
 # 1. ВЕБ-СЕРВЕР ДЛЯ РАБОТЫ 24/7 (RENDER)
@@ -20,7 +20,7 @@ def home():
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 Thread(target=run_flask, daemon=True).start()
 
