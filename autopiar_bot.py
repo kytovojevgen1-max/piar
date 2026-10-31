@@ -63,28 +63,35 @@ user_states = {}
 
 
 # =====================================================================
-# 3. АВТОМАТИЧЕСКИЙ СБОР ЧАТОВ И УЛЬТРАБЫСТРЫЙ ПОТОК (15 СЕК)
+# 3. УЛЬТРА-СБОР ЧАТОВ ЧЕРЕЗ API И ПОТОК РАССЫЛКИ (15 СЕК)
 # =====================================================================
 async def auto_fetch_chats():
     try:
-        conversations = await bot.api.messages.get_conversations(count=200, filter="all")
+        # Запрашиваем именно беседы через прямой API-метод
+        response = await bot.api.request(
+            "messages.getConversations", 
+            {"count": 200, "filter": "chat"}
+        )
+        
         cfg = load_config()
         current_chats = set(cfg.get("chats", []))
-        
         added_count = 0
-        for item in conversations.items:
-            peer_id = item.conversation.peer.id
-            if peer_id > 2000000000:
+        
+        items = response.get("items", [])
+        for item in items:
+            peer = item.get("conversation", {}).get("peer", {})
+            peer_id = peer.get("id")
+            if peer_id and peer_id > 2000000000:
                 if peer_id not in current_chats:
                     current_chats.add(peer_id)
                     added_count += 1
         
-        if added_count > 0:
+        if added_count > 0 or len(current_chats) != len(cfg.get("chats", [])):
             cfg["chats"] = list(current_chats)
             save_config(cfg)
-            print(f"📥 [AUTO-SYNC] Автоматически найдено новых чатов: {added_count}. Всего: {len(cfg['chats'])}")
+            print(f"📥 [AUTO-SYNC] Найдено бесед: {len(cfg['chats'])} (новых: {added_count})")
     except Exception as e:
-        print(f"⚠️ Ошибка автосбора чатов: {e}")
+        print(f"⚠️ Ошибка автосбора чатов через API: {e}")
 
 async def send_to_chat(peer_id, text, attachment):
     try:
@@ -105,27 +112,23 @@ async def run_mailing():
     active = cfg.get("piar_active", False)
     chats = cfg.get("chats", [])
     
-    print(f"🔄 [ПРОВЕРКА] Пиар активен: {active} | Бесед в базе: {len(chats)}")
+    print(f"🔄 [ПРОВЕРКА] Пиар активен: {active} | Бесед в базе: {chats}")
     
     if active and chats:
         text = cfg.get("piar_text", "")
         attachment = cfg.get("piar_attachment", "")
         
-        print(f"🚀 [UPPER-PIAR] Погнали раунд рассылки по {len(chats)} чатам!")
-        batch_size = 30
-        for i in range(0, len(chats), batch_size):
-            batch = chats[i:i + batch_size]
-            tasks = [send_to_chat(peer_id, text, attachment) for peer_id in batch]
-            await asyncio.gather(*tasks)
-            await asyncio.sleep(0.1)
-        print("✅ [UPPER-PIAR] Раунд успешно завершен.")
+        print(f"🚀 [UPPER-PIAR] Рассылка полетела по беседам: {chats}")
+        for peer_id in chats:
+            await send_to_chat(peer_id, text, attachment)
+            await asyncio.sleep(0.2)
+        print("✅ [UPPER-PIAR] Раунд успешно завершен. Ждем 15 секунд...")
     else:
-        print("⚠️ [UPPER-PIAR] Рассылка пропущена: пиар выключен или нет чатов в базе.")
+        print("⚠️ [UPPER-PIAR] Рассылка пропущена: пиар выключен или список бесед пуст!")
 
 async def piar_loop():
-    print("🚀 [LOOP] Ультимативный поток автопиара запущен (интервал 15 СЕКУНД). Уффф!")
+    print("🚀 [LOOP] Фоновый поток запущен. Интервал: 15 секунд.")
     while True:
-        # Ровно 15 секунд задержки
         await asyncio.sleep(15)
         try:
             await run_mailing()
@@ -246,7 +249,7 @@ async def private_handler(message: Message):
         
         return await message.answer(
             f"📊 **СТАТУС СИСТЕМЫ:**\n\n"
-            f"• Пиар: {status_piar} (каждые 15 СЕКУНД 🚀)\n"
+            f"• Пиар: {status_piar} (каждые 15 сек 🚀)\n"
             f"• Чатов в базе: `{chats_count}`\n"
             f"• Аптайм: `{hours}ч {minutes}м {seconds}с`\n"
             f"• Медиа: `{piar_att}`\n\n"
@@ -340,5 +343,5 @@ async def chat_handler(message: Message):
 
 
 if __name__ == "__main__":
-    print("🚀 AutoPiar Bot запущен на 15 секунд!")
+    print("🚀 AutoPiar Bot запущен на 15 секунд с автосбором бесед!")
     bot.run_forever()
