@@ -15,13 +15,7 @@ START_TIME = time.time()
 def home():
     return "Prince Russia AutoPiar Server: ONLINE"
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
-Thread(target=run_flask, daemon=True).start()
-
-
+# Запускаем Flask только один раз в главном потоке для Render
 # =====================================================================
 # 2. НАСТРОЙКИ И ФАЙЛЫ
 # =====================================================================
@@ -166,4 +160,5 @@ def vk_webhook():
     return 'ok'
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
