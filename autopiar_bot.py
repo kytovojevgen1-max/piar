@@ -67,11 +67,14 @@ def send_message(peer_id, text, keyboard=None):
     if keyboard:
         params["keyboard"] = json.dumps(keyboard, ensure_ascii=False)
     
-    response = requests.post(VK_API_URL + "messages.send", data=params).json()
-    if "error" in response:
-        err_code = response["error"].get("error_code")
-        if err_code in [901, 902, 917, 7]:  # Ошибки, если бота кикнули из чата
-            return False
+    try:
+        response = requests.post(VK_API_URL + "messages.send", data=params, timeout=10).json()
+        if "error" in response:
+            err_code = response["error"].get("error_code")
+            if err_code in [901, 902, 917, 7, 936]:  # Ошибки (бот исключен или нет доступа)
+                return False
+    except:
+        pass
     return True
 
 # ================= КЛАВИАТУРЫ =================
@@ -100,15 +103,15 @@ def get_user_keyboard():
         ]
     }
 
-# ================= ФОНОВЫЙ ПОТОК АВТОПИАРА (КАЖДЫЕ 30 СЕК) =================
+# ================= МОЩНЫЙ ФОНОВЫЙ ПОТОК АВТОПИАРА (СТРОГО КАЖДЫЕ 30 СЕК) =================
 def background_autopyar():
-    print("⏳ Фоновый поток автопиара запущен (интервал: 30 секунд).")
+    print("🚀 Автопиар-машина запущена: шпарит во все чаты каждые 30 секунд 24/7!")
     while True:
-        time.sleep(30)  # Спим ровно 30 секунд
+        time.sleep(30)  # Ровно 30 секунд пауза
         try:
             db = load_data()
             if not db.get("is_active", True):
-                continue  # Если автопиар выключен админом — пропускаем цикл
+                continue  # Если админ выключил автопиар — ждем следующего круга
             
             chats = db.get("chats", [])
             if not chats:
@@ -116,14 +119,14 @@ def background_autopyar():
 
             active_chats = []
             for chat_id in chats:
-                # Шлем пиар в каждый сохраненный чат
+                # Отправляем сообщение без задержек в каждый чат
                 success = send_message(chat_id, db["piar_text"])
                 if success:
                     active_chats.append(chat_id)
                 else:
-                    print(f"🗑 Бот исключен из чата {chat_id}, удаляем из базы.")
+                    print(f"🗑 Бот удален из чата {chat_id}, убираем из базы.")
             
-            # Обновляем список чатов (удаляем мертвые чаты, где бота кикнули)
+            # Чистим мертвые чаты
             if len(active_chats) != len(chats):
                 db["chats"] = active_chats
                 save_data(db)
@@ -144,7 +147,7 @@ def get_long_poll_server():
 def main():
     print("🚀 NEBULA STUDIO Long Poll Bot запущен!")
     
-    # Запускаем фоновый автопиар в отдельном потоке
+    # Запускаем автопиар в фоновом режиме
     piar_thread = threading.Thread(target=background_autopyar, daemon=True)
     piar_thread.start()
 
@@ -172,7 +175,7 @@ def main():
             ts = response["updates_ts"] if "updates_ts" in response else response.get("ts", ts)
 
             for event in response.get("updates", []):
-                # Если бота добавили в беседу — сразу сохраняем чат
+                # Если бота добавили в новый чат — сразу фиксируем
                 if event.get("type") == "chat_invite_user":
                     db = load_data()
                     peer_id = event["object"].get("peer_id")
@@ -200,7 +203,7 @@ def main():
 
                     is_admin = (from_id in db["admins"]) or (from_id in MAIN_ADMINS)
 
-                    # Состояния ввода текста админом
+                    # Состояния админа
                     if is_admin and from_id in admin_states:
                         state = admin_states.pop(from_id)
                         if text_lower == "отмена":
