@@ -9,7 +9,7 @@ app = Flask(__name__)
 
 # ================= НАСТРОЙКИ =================
 VK_TOKEN = "vk1.a.tjIJ7CqnErXpn4Vq_nzBKQBQMjb_NcJf4kiFaJZTZoEsJ4ZCz8eBu5Z8669wHETxyU6MQ_CwhnHTQfnHLMOG6kWYjzbwap1DhP98OOs8Pj2qurp0hu7u0mDR1Ub4vdGXAq-jcKbaqp9cawQ4QZ_qnSvwwIoXZn1YEcK_c7vAkwPnpW6fc6fd936xb6vF7NAt4yw76BK5X9HHnt3CS6EfxA"
-CONFIRMATION_TOKEN = "b7a2dc2e"
+CONFIRMATION_TOKEN = "b7a2dc2e"  # Новый токен подтверждения со скриншота
 MAIN_ADMINS = [897082738, 1108641965]
 
 DATA_FILE = "data.json"
@@ -34,11 +34,11 @@ def load_data():
     if not os.path.exists(DATA_FILE):
         default_data = {
             "piar_text": DEFAULT_PIAR_TEXT,
-            "is_active": True,  # Статус автопиара (вкл/выкл)
+            "is_active": True,
             "admins": list(MAIN_ADMINS),
             "users": [],
-            "chats": [],       # Список ID бесед, где бот состоит
-            "cooldowns": {}    # Таймеры для чатов {chat_id: timestamp}
+            "chats": [],
+            "cooldowns": {}
         }
         save_data(default_data)
         return default_data
@@ -75,10 +75,8 @@ def send_message(peer_id, text, keyboard=None):
     
     response = requests.post(VK_API_URL + "messages.send", data=params).json()
     
-шо       # Если бота кикнули из беседы или заблокировали чат (ошибка ВК)
     if "error" in response:
         err_code = response["error"].get("error_code")
-        # Коды ошибок ВК: нет доступа к чату / заблокирован / вышел из беседы
         if err_code in [901, 902, 917, 7]:
             return False
     return True
@@ -115,7 +113,6 @@ def vk_callback():
     if data.get("type") == "confirmation":
         return CONFIRMATION_TOKEN
 
-    # Если бота добавили в беседу
     if data.get("type") == "chat_invite_user":
         db = load_data()
         peer_id = data["object"].get("peer_id")
@@ -124,7 +121,6 @@ def vk_callback():
             save_data(db)
         return "ok"
 
-    # Новое сообщение
     if data.get("type") == "message_new":
         msg = data["object"]["message"]
         from_id = msg["from_id"]
@@ -134,19 +130,16 @@ def vk_callback():
 
         db = load_data()
         
-        # Сохраняем пользователя для ЛС
         if peer_id > 0 and peer_id not in db["users"]:
             db["users"].append(peer_id)
             save_data(db)
 
-        # Если сообщение из беседы и чата еще нет в базе — добавляем
         if peer_id > 2000000000 and peer_id not in db["chats"]:
             db["chats"].append(peer_id)
             save_data(db)
 
         is_admin = (from_id in db["admins"]) or (from_id in MAIN_ADMINS)
 
-        # Админ-состояния для ввода текста
         if is_admin and from_id in admin_states:
             state = admin_states.pop(from_id)
             if text_lower == "отмена":
@@ -169,24 +162,21 @@ def vk_callback():
                 send_message(peer_id, f"✅ Рассылка отправлена {count} пользователям в ЛС!", get_admin_keyboard(db["is_active"]))
                 return "ok"
 
-        # Управление кнопками админа
         if is_admin:
             if text == "🔴 Остановить автопиар":
                 db["is_active"] = False
                 save_data(db)
-                send_message(peer_id, "🔴 Автопиар остановлен!", get_admin_keyboard(False))
+                send_message(peer_id, "🔴 Автопиар остановлен в беседах!", get_admin_keyboard(False))
                 return "ok"
             elif text == "🟢 Запустить автопиар":
                 db["is_active"] = True
                 save_data(db)
-                send_message(peer_id, "🟢 Автопиар запущен!", get_admin_keyboard(True))
+                send_message(peer_id, "🟢 Автопиар запущен в беседах!", get_admin_keyboard(True))
                 return "ok"
             elif text == "📊 Статистика чатов":
-                # Проверяем беседы на актуальность
                 active_chats = []
                 for cid in db["chats"]:
-                    # Тестовая отправка / проверка жизни чата
-                    res = send_message(cid, f"📊 Статистика:\n• Чатов в базе: {len(db['chats'])}\n• Юзеров в ЛС: {len(db['users'])}\n• Статус пиара: {'Вкл' if db['is_active'] else 'Выкл'}")
+                    res = send_message(cid, f"📊 Статистика:\n• Чатов в базе: {len(db['chats'])}\n• Юзеров в ЛС: {len(db['users'])}\n• Статус автопиара: {'Вкл' if db['is_active'] else 'Выкл'}")
                     if res:
                         active_chats.append(cid)
                 db["chats"] = active_chats
@@ -195,38 +185,38 @@ def vk_callback():
                 return "ok"
             elif text == "✏️ Изменить текст пиара":
                 admin_states[from_id] = "edit_piar"
-                send_message(peer_id, "✍️ Отправь новый текст для автопиара (или напиши 'Отмена'):")
+                send_message(peer_id, "✍️ Отправь новый текст для автопиара/витрины (или напиши 'Отмена'):")
                 return "ok"
             elif text == "📢 Сделать рассылку в ЛС":
                 admin_states[from_id] = "broadcast"
                 send_message(peer_id, "📣 Напиши текст рассылки для личных сообщений:")
                 return "ok"
 
-        # Если это ЛС (личка)
+        # Личные сообщения (ЛС с ботом)
         if peer_id > 0:
             if is_admin and text.lower() in ["админ", "миню", "меню", "start", "старт"]:
                 send_message(peer_id, "⚙️ Панель администратора NEBULA STUDIO:", get_admin_keyboard(db["is_active"]))
+            elif text.lower() == "🛒 прайс-лист":
+                send_message(peer_id, db["piar_text"], get_user_keyboard())
+            elif text.lower() == "📩 связь с админом":
+                send_message(peer_id, "📩 Напиши напрямую в ЛС создателям или в ТГ: @NEBULASTUDIO1", get_user_keyboard())
             else:
                 send_message(peer_id, db["piar_text"], get_user_keyboard())
             return "ok"
 
-        # ================= ЛОГИКА АВТОПИАРА В БЕСЕДАХ (С ЗАДЕРЖКОЙ 30 СЕК) =================
+        # Автопиар в беседах/чатах с кулдауном 30 секунд
         if peer_id > 2000000000 and db["is_active"]:
             current_time = time.time()
             cooldowns = db.get("cooldowns", {})
             last_time = cooldowns.get(str(peer_id), 0)
 
-            # Прошло ли 30 секунд с последней отправки в этот чат?
             if current_time - last_time >= 30:
-                # Обновляем таймер для этого чата
                 cooldowns[str(peer_id)] = current_time
                 db["cooldowns"] = cooldowns
                 save_data(db)
 
-                # Отправляем рекламу
                 success = send_message(peer_id, db["piar_text"])
                 if not success:
-                    # Если бота кикнули — удаляем чат из базы
                     if peer_id in db["chats"]:
                         db["chats"].remove(peer_id)
                         save_data(db)
@@ -235,7 +225,7 @@ def vk_callback():
 
 @app.route("/", methods=["GET"])
 def index():
-    return "NEBULA STUDIO Autopyar Bot is running!"
+    return "NEBULA STUDIO Bot (2 in 1) is running!"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
