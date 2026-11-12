@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import time
 import requests
 from flask import Flask, request
 
@@ -8,19 +9,14 @@ app = Flask(__name__)
 
 # ================= НАСТРОЙКИ =================
 VK_TOKEN = "vk1.a.tjIJ7CqnErXpn4Vq_nzBKQBQMjb_NcJf4kiFaJZTZoEsJ4ZCz8eBu5Z8669wHETxyU6MQ_CwhnHTQfnHLMOG6kWYjzbwap1DhP98OOs8Pj2qurp0hu7u0mDR1Ub4vdGXAq-jcKbaqp9cawQ4QZ_qnSvwwIoXZn1YEcK_c7vAkwPnpW6fc6fd936xb6vF7NAt4yw76BK5X9HHnt3CS6EfxA"
-
-# Строка подтверждения для ВК со скриншота
-CONFIRMATION_TOKEN = "c3bf119d"
-
-# Главные владельцы (админы)
+CONFIRMATION_TOKEN = "b7a2dc2e"
 MAIN_ADMINS = [897082738, 1108641965]
 
 DATA_FILE = "data.json"
 VK_API_URL = "https://api.vk.com/method/"
 API_VERSION = "5.199"
 
-# Текст автопиара (который будет лететь в ЛС и беседы)
-AUTOPIAR_TEXT = (
+DEFAULT_PIAR_TEXT = (
     "🚀 **ИЩЕШЬ КАЧЕСТВЕННЫЕ СЛИВЫ И ГОТОВЫЕ ПРОЕКТЫ ДЛЯ CRMP MOBILE?**\n\n"
     "Забудь про перекупщиков и кривые моды с багами. В **NEBULA STUDIO** есть всё для твоего сервера! 🔥\n\n"
     "💎 **Что мы предлагаем:**\n"
@@ -37,9 +33,12 @@ AUTOPIAR_TEXT = (
 def load_data():
     if not os.path.exists(DATA_FILE):
         default_data = {
-            "welcome_text": AUTOPIAR_TEXT,
+            "piar_text": DEFAULT_PIAR_TEXT,
+            "is_active": True,  # Статус автопиара (вкл/выкл)
             "admins": list(MAIN_ADMINS),
-            "users": []
+            "users": [],
+            "chats": [],       # Список ID бесед, где бот состоит
+            "cooldowns": {}    # Таймеры для чатов {chat_id: timestamp}
         }
         save_data(default_data)
         return default_data
@@ -48,6 +47,12 @@ def load_data():
         for aid in MAIN_ADMINS:
             if aid not in data["admins"]:
                 data["admins"].append(aid)
+        if "chats" not in data:
+            data["chats"] = []
+        if "is_active" not in data:
+            data["is_active"] = True
+        if "cooldowns" not in data:
+            data["cooldowns"] = {}
         return data
 
 def save_data(data):
@@ -56,10 +61,10 @@ def save_data(data):
 
 admin_states = {}
 
-# ================= ФУНКЦИИ ОТПРАВКИ ВК =================
+# ================= ОТПРАВКА СООБЩЕНИЙ =================
 def send_message(peer_id, text, keyboard=None):
     params = {
-        "peer_id": peer_id,  # peer_id работает и для ЛС, и для бесед (чатов)
+        "peer_id": peer_id,
         "message": text,
         "random_id": random.randint(1, 2147483647),
         "access_token": VK_TOKEN,
@@ -67,37 +72,40 @@ def send_message(peer_id, text, keyboard=None):
     }
     if keyboard:
         params["keyboard"] = json.dumps(keyboard, ensure_ascii=False)
-    requests.post(VK_API_URL + "messages.send", data=params)
+    
+    response = requests.post(VK_API_URL + "messages.send", data=params).json()
+    
+шо       # Если бота кикнули из беседы или заблокировали чат (ошибка ВК)
+    if "error" in response:
+        err_code = response["error"].get("error_code")
+        # Коды ошибок ВК: нет доступа к чату / заблокирован / вышел из беседы
+        if err_code in [901, 902, 917, 7]:
+            return False
+    return True
 
 # ================= КЛАВИАТУРЫ =================
-def get_main_keyboard(is_admin=False):
-    buttons = [
-        [{"action": {"type": "text", "label": "🛒 Прайс-лист"}, "color": "primary"}],
-        [
-            {"action": {"type": "text", "label": "🔥 Акция / Скидка"}, "color": "positive"},
-            {"action": {"type": "text", "label": "❓ FAQ / Инфо"}, "color": "secondary"}
-        ],
-        [{"action": {"type": "text", "label": "📩 Купить / Связь с админом"}, "color": "negative"}]
-    ]
-    if is_admin:
-        buttons.append([{"action": {"type": "text", "label": "⚙️ Админ-панель"}, "color": "primary"}])
-    return {"one_time": False, "buttons": buttons}
-
-def get_admin_keyboard():
+def get_admin_keyboard(is_active):
+    status_text = "🔴 Остановить автопиар" if is_active else "🟢 Запустить автопиар"
     return {
         "one_time": False,
         "buttons": [
-            [{"action": {"type": "text", "label": "✏️ Изменить текст автопиара"}, "color": "primary"}],
-            [
-                {"action": {"type": "text", "label": "➕ Выдать админку"}, "color": "positive"},
-                {"action": {"type": "text", "label": "➖ Снять админку"}, "color": "negative"}
-            ],
-            [{"action": {"type": "text", "label": "📢 Сделать рассылку"}, "color": "primary"}],
-            [{"action": {"type": "text", "label": "🔙 В главное меню"}, "color": "secondary"}]
+            [{"action": {"type": "text", "label": status_text}, "color": "negative" if is_active else "positive"}],
+            [{"action": {"type": "text", "label": "📊 Статистика чатов"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "✏️ Изменить текст пиара"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "📢 Сделать рассылку в ЛС"}, "color": "secondary"}]
         ]
     }
 
-# ================= ОБРАБОТКА СООБЩЕНИЙ =================
+def get_user_keyboard():
+    return {
+        "one_time": False,
+        "buttons": [
+            [{"action": {"type": "text", "label": "🛒 Прайс-лист"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "📩 Связь с админом"}, "color": "negative"}]
+        ]
+    }
+
+# ================= ОБРАБОТКА СОБЫТИЙ =================
 @app.route("/", methods=["POST"])
 def vk_callback():
     data = request.json
@@ -107,33 +115,48 @@ def vk_callback():
     if data.get("type") == "confirmation":
         return CONFIRMATION_TOKEN
 
+    # Если бота добавили в беседу
+    if data.get("type") == "chat_invite_user":
+        db = load_data()
+        peer_id = data["object"].get("peer_id")
+        if peer_id and peer_id not in db["chats"]:
+            db["chats"].append(peer_id)
+            save_data(db)
+        return "ok"
+
+    # Новое сообщение
     if data.get("type") == "message_new":
         msg = data["object"]["message"]
         from_id = msg["from_id"]
-        peer_id = msg["peer_id"] # peer_id уникален для бесед и ЛС
+        peer_id = msg["peer_id"]
         text = msg.get("text", "").strip()
         text_lower = text.lower()
 
         db = load_data()
         
-        # Если это ЛС (peer_id < 2 billion) и пользователя нет в базе — сохраняем
+        # Сохраняем пользователя для ЛС
         if peer_id > 0 and peer_id not in db["users"]:
             db["users"].append(peer_id)
             save_data(db)
 
+        # Если сообщение из беседы и чата еще нет в базе — добавляем
+        if peer_id > 2000000000 and peer_id not in db["chats"]:
+            db["chats"].append(peer_id)
+            save_data(db)
+
         is_admin = (from_id in db["admins"]) or (from_id in MAIN_ADMINS)
 
-        # Обработка ввода текстов админом
+        # Админ-состояния для ввода текста
         if is_admin and from_id in admin_states:
             state = admin_states.pop(from_id)
             if text_lower == "отмена":
-                send_message(peer_id, "❌ Отменено.", get_admin_keyboard())
+                send_message(peer_id, "❌ Отменено.", get_admin_keyboard(db["is_active"]))
                 return "ok"
 
-            if state == "edit_autopyar":
-                db["welcome_text"] = text
+            if state == "edit_piar":
+                db["piar_text"] = text
                 save_data(db)
-                send_message(peer_id, "✅ Текст автопиара успешно изменен!", get_admin_keyboard())
+                send_message(peer_id, "✅ Текст автопиара успешно обновлен!", get_admin_keyboard(db["is_active"]))
                 return "ok"
             elif state == "broadcast":
                 count = 0
@@ -143,36 +166,70 @@ def vk_callback():
                         count += 1
                     except:
                         pass
-                send_message(peer_id, f"✅ Рассылка отправлена {count} пользователям в ЛС!", get_admin_keyboard())
+                send_message(peer_id, f"✅ Рассылка отправлена {count} пользователям в ЛС!", get_admin_keyboard(db["is_active"]))
                 return "ok"
 
-        # Команды админ-панели
-        if is_admin and text == "⚙️ Админ-панель":
-            send_message(peer_id, f"⚙️ АДМИН-ПАНЕЛЬ\n👥 Юзеров в базе: {len(db['users'])}", get_admin_keyboard())
-            return "ok"
-        elif is_admin and text == "✏️ Изменить текст автопиара":
-            admin_states[from_id] = "edit_autopyar"
-            send_message(peer_id, "✍️ Отправь новый текст для автопиара (для отмены напиши 'Отмена'):")
-            return "ok"
-        elif is_admin and text == "📢 Сделать рассылку":
-            admin_states[from_id] = "broadcast"
-            send_message(peer_id, "📣 Напиши текст для мгновенной рассылки всем, кто писал в ЛС:")
-            return "ok"
-        elif text == "🔙 В главное меню":
-            send_message(peer_id, "Главное меню:", get_main_keyboard(is_admin))
+        # Управление кнопками админа
+        if is_admin:
+            if text == "🔴 Остановить автопиар":
+                db["is_active"] = False
+                save_data(db)
+                send_message(peer_id, "🔴 Автопиар остановлен!", get_admin_keyboard(False))
+                return "ok"
+            elif text == "🟢 Запустить автопиар":
+                db["is_active"] = True
+                save_data(db)
+                send_message(peer_id, "🟢 Автопиар запущен!", get_admin_keyboard(True))
+                return "ok"
+            elif text == "📊 Статистика чатов":
+                # Проверяем беседы на актуальность
+                active_chats = []
+                for cid in db["chats"]:
+                    # Тестовая отправка / проверка жизни чата
+                    res = send_message(cid, f"📊 Статистика:\n• Чатов в базе: {len(db['chats'])}\n• Юзеров в ЛС: {len(db['users'])}\n• Статус пиара: {'Вкл' if db['is_active'] else 'Выкл'}")
+                    if res:
+                        active_chats.append(cid)
+                db["chats"] = active_chats
+                save_data(db)
+                send_message(peer_id, f"📊 Актуальных чатов в базе: {len(active_chats)}", get_admin_keyboard(db["is_active"]))
+                return "ok"
+            elif text == "✏️ Изменить текст пиара":
+                admin_states[from_id] = "edit_piar"
+                send_message(peer_id, "✍️ Отправь новый текст для автопиара (или напиши 'Отмена'):")
+                return "ok"
+            elif text == "📢 Сделать рассылку в ЛС":
+                admin_states[from_id] = "broadcast"
+                send_message(peer_id, "📣 Напиши текст рассылки для личных сообщений:")
+                return "ok"
+
+        # Если это ЛС (личка)
+        if peer_id > 0:
+            if is_admin and text.lower() in ["админ", "миню", "меню", "start", "старт"]:
+                send_message(peer_id, "⚙️ Панель администратора NEBULA STUDIO:", get_admin_keyboard(db["is_active"]))
+            else:
+                send_message(peer_id, db["piar_text"], get_user_keyboard())
             return "ok"
 
-        # ================= АВТОПИАР ЛОГИКА =================
-        # Если сообщение пришло в беседу (peer_id > 2000000000) ИЛИ в ЛС — кидаем рекламный текст
-        # (Бота добавь в беседы, и он будет отвечать рекламой на каждое новое сообщение в чате)
-        current_text = db.get("welcome_text", AUTOPIAR_TEXT)
-        
-        if peer_id > 2000000000:
-            # Это беседа (чат): отвечаем рекламой на любое сообщение в чате
-            send_message(peer_id, current_text)
-        else:
-            # Это ЛС: отправляем текст автопиара вместе с кнопками
-            send_message(peer_id, current_text, get_main_keyboard(is_admin))
+        # ================= ЛОГИКА АВТОПИАРА В БЕСЕДАХ (С ЗАДЕРЖКОЙ 30 СЕК) =================
+        if peer_id > 2000000000 and db["is_active"]:
+            current_time = time.time()
+            cooldowns = db.get("cooldowns", {})
+            last_time = cooldowns.get(str(peer_id), 0)
+
+            # Прошло ли 30 секунд с последней отправки в этот чат?
+            if current_time - last_time >= 30:
+                # Обновляем таймер для этого чата
+                cooldowns[str(peer_id)] = current_time
+                db["cooldowns"] = cooldowns
+                save_data(db)
+
+                # Отправляем рекламу
+                success = send_message(peer_id, db["piar_text"])
+                if not success:
+                    # Если бота кикнули — удаляем чат из базы
+                    if peer_id in db["chats"]:
+                        db["chats"].remove(peer_id)
+                        save_data(db)
 
     return "ok"
 
