@@ -115,13 +115,16 @@ def get_admin_keyboard(is_active):
             [{"action": {"type": "text", "label": status_text}, "color": "negative" if is_active else "positive"}],
             [
                 {"action": {"type": "text", "label": "✏️ Текст автопиара"}, "color": "primary"},
-                {"action": {"type": "text", "label": "✏️ Автоответ в ЛС"}, "color": "primary"}
+                {"action": {"type": "text", "label": "✏️ Название / Прайс"}, "color": "primary"}
             ],
             [
-                {"action": {"type": "text", "label": "✏️ Текст хелпера"}, "color": "primary"},
-                {"action": {"type": "text", "label": "📊 Статистика"}, "color": "secondary"}
+                {"action": {"type": "text", "label": "✏️ Автоответ в ЛС"}, "color": "primary"},
+                {"action": {"type": "text", "label": "✏️ Текст хелпера"}, "color": "primary"}
             ],
-            [{"action": {"type": "text", "label": "📢 Рассылка в ЛС"}, "color": "secondary"}],
+            [
+                {"action": {"type": "text", "label": "📊 Статистика"}, "color": "secondary"},
+                {"action": {"type": "text", "label": "📢 Рассылка в ЛС"}, "color": "secondary"}
+            ],
             [{"action": {"type": "text", "label": "🛒 Меню покупателя"}, "color": "positive"}]
         ]
     }
@@ -245,12 +248,17 @@ def run_bot():
                         if state == "edit_piar":
                             db["piar_text"] = text
                             save_data(db)
-                            send_message(peer_id, "✅ Текст автопиара (и прайса) обновлён!", get_admin_keyboard(db["is_active"]))
+                            send_message(peer_id, "✅ Текст автопиара обновлён!", get_admin_keyboard(db["is_active"]))
+                            continue
+                        elif state == "edit_price":
+                            db["piar_text"] = text  # Обновляет и прайс-лист для клиентов
+                            save_data(db)
+                            send_message(peer_id, "✅ Прайс-лист и товары успешно изменены!", get_admin_keyboard(db["is_active"]))
                             continue
                         elif state == "edit_welcome":
                             db["welcome_text"] = text
                             save_data(db)
-                            send_message(peer_id, "✅ Приветственный автоответ на «Начать/Старт» обновлён!", get_admin_keyboard(db["is_active"]))
+                            send_message(peer_id, "✅ Приветственный автоответ в ЛС обновлён!", get_admin_keyboard(db["is_active"]))
                             continue
                         elif state == "edit_helper":
                             db["helper_text"] = text
@@ -287,7 +295,11 @@ def run_bot():
                             continue
                         elif text == "✏️ Текст автопиара":
                             admin_states[from_id] = "edit_piar"
-                            send_message(peer_id, "✍️ Отправь новый текст для автопиара и прайса (или напиши 'Отмена'):")
+                            send_message(peer_id, "✍️ Отправь новый текст для автопиара в беседы (или напиши 'Отмена'):")
+                            continue
+                        elif text == "✏️ Название / Прайс":
+                            admin_states[from_id] = "edit_price"
+                            send_message(peer_id, "✍️ Отправь новый текст для прайс-листа и товаров (или напиши 'Отмена'):")
                             continue
                         elif text == "✏️ Автоответ в ЛС":
                             admin_states[from_id] = "edit_welcome"
@@ -299,7 +311,7 @@ def run_bot():
                             continue
                         elif text == "📢 Рассылка в ЛС":
                             admin_states[from_id] = "broadcast"
-                            send_message(peer_id, "📣 Напиши текст для массовой массовой рассылки всем в ЛС (или 'Отмена'):")
+                            send_message(peer_id, "📣 Напиши текст для массовой рассылки всем в ЛС (или 'Отмена'):")
                             continue
                         elif text == "🛒 Меню покупателя":
                             send_message(peer_id, db["welcome_text"], get_user_keyboard(is_admin=True))
