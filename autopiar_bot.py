@@ -199,6 +199,7 @@ def main():
             ts = response["updates_ts"] if "updates_ts" in response else response.get("ts", ts)
 
             for event in response.get("updates", []):
+                # Добавление бота в беседу
                 if event.get("type") == "chat_invite_user":
                     db = load_data()
                     peer_id = event["object"].get("peer_id")
@@ -214,19 +215,30 @@ def main():
                     text = msg.get("text", "").strip()
                     text_lower = text.lower()
 
-                    db = load_data()
-                    
-                    if peer_id > 0 and peer_id not in db["users"]:
-                        db["users"].append(peer_id)
-                        save_data(db)
+                    # Игнорируем сообщения от других ботов/сообществ
+                    if from_id < 0:
+                        continue
 
-                    if peer_id > 2000000000 and peer_id not in db["chats"]:
-                        db["chats"].append(peer_id)
+                    db = load_data()
+
+                    # ========== 1. ПРОВЕРКА: ЭТО БЕСЕДА (ЧАТ)? ==========
+                    # В беседах peer_id всегда > 2000000000 (и не равен from_id)
+                    if peer_id > 2000000000 or peer_id != from_id:
+                        if peer_id not in db["chats"]:
+                            db["chats"].append(peer_id)
+                            save_data(db)
+                        # ЖЁСТКИЙ СТОП: в беседах бот НИКОГДА не отвечает на сообщения/упоминания!
+                        # Туда шлёт только фоновый автопиар раз в 30 сек.
+                        continue
+
+                    # ========== 2. ДАЛЬШЕ ИДЁТ ТОЛЬКО ЛИЧКА (ЛС) ==========
+                    if peer_id not in db["users"]:
+                        db["users"].append(peer_id)
                         save_data(db)
 
                     is_admin = (from_id in db["admins"]) or (from_id in MAIN_ADMINS)
 
-                    # Состояния ввода текста админом
+                    # Состояния ввода текста админом (только в ЛС)
                     if is_admin and from_id in admin_states:
                         state = admin_states.pop(from_id)
                         if text_lower == "отмена":
@@ -259,8 +271,8 @@ def main():
                             send_message(peer_id, f"✅ Рассылка отправлена {count} пользователям в ЛС!", get_admin_keyboard(db["is_active"]))
                             continue
 
-                    # Админ-панель в ЛС
-                    if is_admin and peer_id > 0:
+                    # Админ-панель (только в ЛС)
+                    if is_admin:
                         if text == "⚙️ Админ-панель" or text_lower in ["админ", "миню", "меню"]:
                             send_message(peer_id, f"⚙️ АДМИН-ПАНЕЛЬ NEBULA STUDIO\n\n👥 Юзеров в ЛС: {len(db['users'])}\n💬 Чатов с автопиаром: {len(db['chats'])}\n⚡ Статус пиара: {'🟢 Включен' if db['is_active'] else '🔴 Выключен'}", get_admin_keyboard(db["is_active"]))
                             continue
@@ -297,20 +309,18 @@ def main():
                             send_message(peer_id, db["welcome_text"], get_user_keyboard(is_admin=True))
                             continue
 
-                    # Обработка кнопок покупателя в ЛС
-                    if peer_id > 0:
-                        if text == "🛒 Прайс-лист / Товары":
-                            send_message(peer_id, db["piar_text"], get_user_keyboard(is_admin))
-                        elif text == "❓ Как купить / Правила":
-                            send_message(peer_id, db["helper_text"], get_user_keyboard(is_admin))
-                        elif text == "📩 Вызвать администратора":
-                            send_message(peer_id, "📩 Запрос отправлен администраторам! Ожидайте ответа в этом чате.\n\n⚠️ Напоминаем: работаем строго по 100% предоплате перед началом работы.", get_user_keyboard(is_admin))
-                            for admin_id in db["admins"]:
-                                send_message(admin_id, f"🚨 КЛИЕНТ ВЫЗЫВАЕТ АДМИНА!\n\n👤 Покупатель: vk.com/id{peer_id}\n💬 Зайди в сообщения сообщества vk.com/nebulastudio0, чтобы ответить ему!")
-                        else:
-                            # На «Начать», «Старт», «Привет» или любое другое сообщение
-                            send_message(peer_id, db["welcome_text"], get_user_keyboard(is_admin))
-                        continue
+                    # Кнопки и автоответ в ЛС для покупателей
+                    if text == "🛒 Прайс-лист / Товары":
+                        send_message(peer_id, db["piar_text"], get_user_keyboard(is_admin))
+                    elif text == "❓ Как купить / Правила":
+                        send_message(peer_id, db["helper_text"], get_user_keyboard(is_admin))
+                    elif text == "📩 Вызвать администратора":
+                        send_message(peer_id, "📩 Запрос отправлен администраторам! Ожидайте ответа в этом чате.\n\n⚠️ Напоминаем: работаем строго по 100% предоплате перед началом работы.", get_user_keyboard(is_admin))
+                        for admin_id in db["admins"]:
+                            send_message(admin_id, f"🚨 КЛИЕНТ ВЫЗЫВАЕТ АДМИНА!\n\n👤 Покупатель: vk.com/id{peer_id}\n💬 Зайди в сообщения сообщества vk.com/nebulastudio0, чтобы ответить ему!")
+                    else:
+                        # Срабатывает только в ЛС (на "Начать", "Старт" и т.д.)
+                        send_message(peer_id, db["welcome_text"], get_user_keyboard(is_admin))
 
         except Exception as e:
             print(f"Ошибка в цикле: {e}")
