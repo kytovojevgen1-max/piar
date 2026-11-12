@@ -21,31 +21,40 @@ VK_API_URL = "https://api.vk.com/method/"
 API_VERSION = "5.199"
 
 DEFAULT_PIAR_TEXT = (
-    "🚀 ИЩЕШЬ КАЧЕСТВЕННЫЕ СЛИВЫ И ГОТОВЫЕ ПРОЕКТЫ ДЛЯ CRMP MOBILE?\n\n"
-    "Забудь про перекупщиков и кривые моды с багами. В NEBULA STUDIO есть всё для твоего сервера! 🔥\n\n"
-    "💎 Что мы предлагаем:\n"
+    "💎 NEBULA STUDIO — ЭКСКЛЮЗИВНЫЕ ПРОЕКТЫ И ПРЕМИУМ-СЛИВЫ ДЛЯ CRMP MOBILE\n\n"
+    "Устал от кривых сборок, дырявых модов и «мастеров», которые исчезают после оплаты? Добро пожаловать в NEBULA STUDIO. Мы не делаем дёшево и наспех — мы создаём качественный фундамент для серьёзных проектов, которые приносят прибыль. 🚀\n\n"
+    "👑 Что мы предлагаем для твоего сервера:\n"
     "• 📱 Моды Mobile (Black Russia, Матрёшка РП)\n"
-    "• 💻 ПК Моды (Radmir RP 8.4)\n"
-    "• 💬 Форумы XenForo под ключ\n"
-    "• 🌐 Готовые сайты и лендинги\n\n"
-    "👇 Залетай, прайс и товары здесь:\n"
+    "• 💻 ПК Сборки (Radmir RP 8.4)\n"
+    "• 💬 Форумы XenForo (дорогой дизайн, защита)\n"
+    "• 🌐 Сайты и лендинги под ключ\n\n"
     "🔗 Telegram: https://t.me/NEBULASTUDIO\n"
     "📩 VK: vk.com/nebulastudio0"
+)
+
+DEFAULT_PRICE_TEXT = (
+    "🛒 НАШ ПРАЙС-ЛИСТ И ТОВАРЫ (NEBULA STUDIO):\n\n"
+    "1️⃣ Моды Mobile (Black Russia / Матрёшка РП) — по запросу / в ЛС\n"
+    "2️⃣ ПК Сборки (Radmir RP 8.4) — эксклюзивное качество\n"
+    "3️⃣ Форумы XenForo под ключ (дизайн, плагины, защита)\n"
+    "4️⃣ Сайты, лендинги и боты\n\n"
+    "⚠️ Работаем строго по 100% предоплате!\n"
+    "👇 Нажми «📩 Вызвать администратора», чтобы сделать заказ:"
 )
 
 DEFAULT_WELCOME_TEXT = (
     "🌌 Добро пожаловать в NEBULA STUDIO!\n\n"
     "Мы создаём и настраиваем проекты CRMP Mobile / PC, сайты и форумы под ключ.\n\n"
-    "👇 Выбери нужный раздел в меню ниже, чтобы посмотреть прайс, узнать условия работы или вызвать администратора:"
+    "👇 Выбери нужный раздел в меню ниже:"
 )
 
 DEFAULT_HELPER_TEXT = (
     "📘 КАК ПРОХОДИТ ПОКУПКА И РАБОТА (ПРАВИЛА):\n\n"
-    "1️⃣ Выбор товара: ознакомься с прайсом и нажми кнопку «📩 Вызвать администратора».\n"
-    "2️⃣ Оформление: напиши в чат, какой мод, форум или услугу хочешь заказать.\n"
-    "3️⃣ Оплата: работаем строго по 100% предоплате. Сначала ты оплачиваешь заказ — сразу после подтверждения оплаты мы начинаем установку/выдачу.\n"
-    "4️⃣ Гарантии: быстрая выдача файлов, помощь с заливкой на твой хостинг.\n\n"
-    "🔗 Наш Telegram-канал с отзывами и новостями: https://t.me/NEBULASTUDIO\n"
+    "1️⃣ Выбор товара: ознакомься с прайсом и нажми «📩 Вызвать администратора».\n"
+    "2️⃣ Оформление: напиши менеджеру, какой мод или услугу хочешь заказать.\n"
+    "3️⃣ Оплата: работаем строго по 100% предоплате. Сначала ты оплачиваешь заказ — сразу после подтверждения мы начинаем работу.\n"
+    "4️⃣ Гарантии: быстрая выдача файлов и помощь с установкой.\n\n"
+    "🔗 Наш Telegram: https://t.me/NEBULASTUDIO\n"
     "📩 Группа ВК: vk.com/nebulastudio0"
 )
 
@@ -54,6 +63,7 @@ def load_data():
     if not os.path.exists(DATA_FILE):
         default_data = {
             "piar_text": DEFAULT_PIAR_TEXT,
+            "price_text": DEFAULT_PRICE_TEXT,
             "welcome_text": DEFAULT_WELCOME_TEXT,
             "helper_text": DEFAULT_HELPER_TEXT,
             "is_active": True,
@@ -72,6 +82,8 @@ def load_data():
             data["chats"] = []
         if "is_active" not in data:
             data["is_active"] = True
+        if "price_text" not in data:
+            data["price_text"] = DEFAULT_PRICE_TEXT
         if "welcome_text" not in data:
             data["welcome_text"] = DEFAULT_WELCOME_TEXT
         if "helper_text" not in data:
@@ -115,7 +127,7 @@ def get_admin_keyboard(is_active):
             [{"action": {"type": "text", "label": status_text}, "color": "negative" if is_active else "positive"}],
             [
                 {"action": {"type": "text", "label": "✏️ Текст автопиара"}, "color": "primary"},
-                {"action": {"type": "text", "label": "✏️ Название / Прайс"}, "color": "primary"}
+                {"action": {"type": "text", "label": "✏️ Изменить прайс-лист"}, "color": "primary"}
             ],
             [
                 {"action": {"type": "text", "label": "✏️ Автоответ в ЛС"}, "color": "primary"},
@@ -248,12 +260,12 @@ def run_bot():
                         if state == "edit_piar":
                             db["piar_text"] = text
                             save_data(db)
-                            send_message(peer_id, "✅ Текст автопиара обновлён!", get_admin_keyboard(db["is_active"]))
+                            send_message(peer_id, "✅ Текст автопиара (для чатов) успешно обновлён!", get_admin_keyboard(db["is_active"]))
                             continue
                         elif state == "edit_price":
-                            db["piar_text"] = text  # Обновляет и прайс-лист для клиентов
+                            db["price_text"] = text
                             save_data(db)
-                            send_message(peer_id, "✅ Прайс-лист и товары успешно изменены!", get_admin_keyboard(db["is_active"]))
+                            send_message(peer_id, "✅ Прайс-лист (для клиентов в ЛС) успешно обновлён!", get_admin_keyboard(db["is_active"]))
                             continue
                         elif state == "edit_welcome":
                             db["welcome_text"] = text
@@ -295,11 +307,11 @@ def run_bot():
                             continue
                         elif text == "✏️ Текст автопиара":
                             admin_states[from_id] = "edit_piar"
-                            send_message(peer_id, "✍️ Отправь новый текст для автопиара в беседы (или напиши 'Отмена'):")
+                            send_message(peer_id, "✍️ Отправь новый текст для РЕКЛАМЫ в чатах (или напиши 'Отмена'):")
                             continue
-                        elif text == "✏️ Название / Прайс":
+                        elif text == "✏️ Изменить прайс-лист":
                             admin_states[from_id] = "edit_price"
-                            send_message(peer_id, "✍️ Отправь новый текст для прайс-листа и товаров (или напиши 'Отмена'):")
+                            send_message(peer_id, "✍️ Отправь новый текст для ПРАЙС-ЛИСТА в ЛС (или напиши 'Отмена'):")
                             continue
                         elif text == "✏️ Автоответ в ЛС":
                             admin_states[from_id] = "edit_welcome"
@@ -318,7 +330,7 @@ def run_bot():
                             continue
 
                     if text == "🛒 Прайс-лист / Товары":
-                        send_message(peer_id, db["piar_text"], get_user_keyboard(is_admin))
+                        send_message(peer_id, db["price_text"], get_user_keyboard(is_admin))
                     elif text == "❓ Как купить / Правила":
                         send_message(peer_id, db["helper_text"], get_user_keyboard(is_admin))
                     elif text == "📩 Вызвать администратора":
