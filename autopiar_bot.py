@@ -97,7 +97,7 @@ def get_user_keyboard():
         "one_time": False,
         "buttons": [
             [{"action": {"type": "text", "label": "🛒 Прайс-лист"}, "color": "primary"}],
-            [{"action": {"type": "text", "label": "📩 Связь с админом"}, "color": "negative"}],
+            [{"action": {"type": "text", "label": "📩 Вызвать администратора"}, "color": "negative"}],
             [{"action": {"type": "text", "label": "⚙️ Админ-панель"}, "color": "secondary"}]
         ]
     }
@@ -107,13 +107,13 @@ def get_long_poll_server():
     res = requests.post(VK_API_URL + "groups.getLongPollServer", data={
         "access_token": VK_TOKEN,
         "v": API_VERSION,
-        "group_id": 243227412  # твой ID группы со скриншота
+        "group_id": 243227412
     }).json()
     return res.get("response")
 
 # ================= ОСНОВНОЙ ЦИКЛ БОТА =================
 def main():
-    print("🚀 NEBULA STUDIO Long Poll Bot запущен и работает без задержек!")
+    print("🚀 NEBULA STUDIO Long Poll Bot запущен!")
     server_data = get_long_poll_server()
     if not server_data:
         print("❌ Ошибка получения Long Poll сервера! Проверь токен.")
@@ -128,7 +128,6 @@ def main():
             response = requests.get(f"{server}?act=a_check&key={key}&ts={ts}&wait=25", timeout=30).json()
             
             if "failed" in response:
-                # Если сессия устарела, получаем заново
                 server_data = get_long_poll_server()
                 if server_data:
                     server = server_data["server"]
@@ -139,7 +138,6 @@ def main():
             ts = response["updates_ts"] if "updates_ts" in response else response.get("ts", ts)
 
             for event in response.get("updates", []):
-                # Если бота добавили в беседу
                 if event.get("type") == "chat_invite_user":
                     db = load_data()
                     peer_id = event["object"].get("peer_id")
@@ -148,7 +146,6 @@ def main():
                         save_data(db)
                     continue
 
-                # Новое сообщение
                 if event.get("type") == "message_new":
                     msg = event["object"]["message"]
                     from_id = msg["from_id"]
@@ -168,17 +165,17 @@ def main():
 
                     is_admin = (from_id in db["admins"]) or (from_id in MAIN_ADMINS)
 
-                    # Состояния админа
+                    # Состояния ввода админа
                     if is_admin and from_id in admin_states:
                         state = admin_states.pop(from_id)
                         if text_lower == "отмена":
-                            send_message(peer_id, "❌ Действие отменено.", get_admin_keyboard(db["is_active"]))
+                            send_message(peer_id, "❌ Отменено.", get_admin_keyboard(db["is_active"]))
                             continue
 
                         if state == "edit_piar":
                             db["piar_text"] = text
                             save_data(db)
-                            send_message(peer_id, "✅ Текст пиара успешно изменен!", get_admin_keyboard(db["is_active"]))
+                            send_message(peer_id, "✅ Текст успешно изменен!", get_admin_keyboard(db["is_active"]))
                             continue
                         elif state == "broadcast":
                             count = 0
@@ -188,7 +185,7 @@ def main():
                                     count += 1
                                 except:
                                     pass
-                            send_message(peer_id, f"✅ Рассылка завершена! Получили: {count} чел.", get_admin_keyboard(db["is_active"]))
+                            send_message(peer_id, f"✅ Рассылка отправлена {count} пользователям!", get_admin_keyboard(db["is_active"]))
                             continue
 
                     # Админ-панель в ЛС
@@ -199,12 +196,12 @@ def main():
                         elif text == "🔴 Остановить автопиар":
                             db["is_active"] = False
                             save_data(db)
-                            send_message(peer_id, "🔴 Автопиар в беседах остановлен.", get_admin_keyboard(False))
+                            send_message(peer_id, "🔴 Автопиар остановлен.", get_admin_keyboard(False))
                             continue
                         elif text == "🟢 Запустить автопиар":
                             db["is_active"] = True
                             save_data(db)
-                            send_message(peer_id, "🟢 Автопиар в беседах запущен!", get_admin_keyboard(True))
+                            send_message(peer_id, "🟢 Автопиар запущен!", get_admin_keyboard(True))
                             continue
                         elif text == "📊 Статистика чатов":
                             active_chats = []
@@ -218,22 +215,28 @@ def main():
                             continue
                         elif text == "✏️ Изменить текст пиара":
                             admin_states[from_id] = "edit_piar"
-                            send_message(peer_id, "✍️ Отправь новый текст для пиара/прайса (или напиши 'Отмена'):")
+                            send_message(peer_id, "✍️ Отправь новый текст для пиара (или 'Отмена'):")
                             continue
                         elif text == "📢 Сделать рассылку в ЛС":
                             admin_states[from_id] = "broadcast"
-                            send_message(peer_id, "📣 Напиши текст для рассылки всем пользователям в ЛС:")
+                            send_message(peer_id, "📣 Напиши текст для рассылки всем в ЛС:")
                             continue
                         elif text == "🛒 Посмотреть как клиент":
                             send_message(peer_id, db["piar_text"], get_user_keyboard())
                             continue
 
+                    # Обработка кнопки вызова администратора клиентом в ЛС
+                    if peer_id > 0 and text_lower == "📩 вызвать администратора":
+                        send_message(peer_id, "📩 Запрос отправлен администраторам! Ожидайте ответа в ЛС.", get_user_keyboard())
+                        # Рассылаем уведомление всем админам
+                        for admin_id in db["admins"]:
+                            send_message(admin_id, f"🚨 **ВНИМАНИЕ! КЛИЕНТ ВЫЗЫВАЕТ АДМИНА!**\n\n👤 Пользователь: vk.com/id{peer_id}\n💬 Перейдите в сообщения сообщества, чтобы ответить ему!")
+                        continue
+
                     # Обычные пользователи в ЛС
                     if peer_id > 0:
                         if text_lower in ["🛒 прайс-лист", "начать", "старт", "start"]:
                             send_message(peer_id, db["piar_text"], get_user_keyboard())
-                        elif text_lower == "📩 связь с админом":
-                            send_message(peer_id, "📩 Пиши напрямую в ЛС создателям или в Telegram: @NEBULASTUDIO1", get_user_keyboard())
                         else:
                             send_message(peer_id, db["piar_text"], get_user_keyboard())
                         continue
