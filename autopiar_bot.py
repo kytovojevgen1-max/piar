@@ -4,6 +4,14 @@ import random
 import time
 import threading
 import requests
+from flask import Flask
+
+app = Flask(__name__)
+
+# Простой веб-сервер для Render (чтобы хостинг не усыплял бота и не ругался на порты)
+@app.route("/")
+def index():
+    return "NEBULA STUDIO Bot is running 24/7!"
 
 # ================= НАСТРОЙКИ =================
 VK_TOKEN = "vk1.a.tjIJ7CqnErXpn4Vq_nzBKQBQMjb_NcJf4kiFaJZTZoEsJ4ZCz8eBu5Z8669wHETxyU6MQ_CwhnHTQfnHLMOG6kWYjzbwap1DhP98OOs8Pj2qurp0hu7u0mDR1Ub4vdGXAq-jcKbaqp9cawQ4QZ_qnSvwwIoXZn1YEcK_c7vAkwPnpW6fc6fd936xb6vF7NAt4yw76BK5X9HHnt3CS6EfxA"
@@ -131,7 +139,7 @@ def get_user_keyboard(is_admin=False):
 
 # ================= ФОНОВЫЙ ПОТОК АВТОПИАРА (24/7 КАЖДЫЕ 30 СЕК) =================
 def background_autopyar():
-    print("🚀 Автопиар запущен: рассылка каждые 30 секунд 24/7!")
+    print("🚀 Автопиар запущен: рассылка во все чаты каждые 30 секунд без пауз!")
     while True:
         time.sleep(30)
         try:
@@ -150,7 +158,7 @@ def background_autopyar():
                     active_chats.append(chat_id)
                 else:
                     print(f"🗑 Чат {chat_id} удален (бота исключили).")
-                time.sleep(0.3)
+                time.sleep(0.2)  # Плавная отправка по чатам без банов
             
             if len(active_chats) != len(chats):
                 db["chats"] = active_chats
@@ -168,13 +176,9 @@ def get_long_poll_server():
     }).json()
     return res.get("response")
 
-# ================= ОСНОВНОЙ ЦИКЛ БОТА =================
-def main():
-    print("🚀 NEBULA STUDIO Bot запущен!")
-    
-    piar_thread = threading.Thread(target=background_autopyar, daemon=True)
-    piar_thread.start()
-
+# ================= ОСНОВНОЙ ЦИКЛ LONG POLL =================
+def run_bot():
+    print("🚀 Long Poll поток запущен!")
     server_data = get_long_poll_server()
     if not server_data:
         print("❌ Ошибка получения Long Poll сервера! Проверь токен.")
@@ -199,7 +203,7 @@ def main():
             ts = response["updates_ts"] if "updates_ts" in response else response.get("ts", ts)
 
             for event in response.get("updates", []):
-                # Добавление бота в беседу
+                # Если бота добавили в новый чат
                 if event.get("type") == "chat_invite_user":
                     db = load_data()
                     peer_id = event["object"].get("peer_id")
@@ -215,116 +219,10 @@ def main():
                     text = msg.get("text", "").strip()
                     text_lower = text.lower()
 
-                    # Игнорируем сообщения от других ботов/сообществ
                     if from_id < 0:
                         continue
 
                     db = load_data()
 
-                    # ========== 1. ПРОВЕРКА: ЭТО БЕСЕДА (ЧАТ)? ==========
-                    # В беседах peer_id всегда > 2000000000 (и не равен from_id)
-                    if peer_id > 2000000000 or peer_id != from_id:
-                        if peer_id not in db["chats"]:
-                            db["chats"].append(peer_id)
-                            save_data(db)
-                        # ЖЁСТКИЙ СТОП: в беседах бот НИКОГДА не отвечает на сообщения/упоминания!
-                        # Туда шлёт только фоновый автопиар раз в 30 сек.
-                        continue
-
-                    # ========== 2. ДАЛЬШЕ ИДЁТ ТОЛЬКО ЛИЧКА (ЛС) ==========
-                    if peer_id not in db["users"]:
-                        db["users"].append(peer_id)
-                        save_data(db)
-
-                    is_admin = (from_id in db["admins"]) or (from_id in MAIN_ADMINS)
-
-                    # Состояния ввода текста админом (только в ЛС)
-                    if is_admin and from_id in admin_states:
-                        state = admin_states.pop(from_id)
-                        if text_lower == "отмена":
-                            send_message(peer_id, "❌ Действие отменено.", get_admin_keyboard(db["is_active"]))
-                            continue
-
-                        if state == "edit_piar":
-                            db["piar_text"] = text
-                            save_data(db)
-                            send_message(peer_id, "✅ Текст автопиара (и прайса) обновлён!", get_admin_keyboard(db["is_active"]))
-                            continue
-                        elif state == "edit_welcome":
-                            db["welcome_text"] = text
-                            save_data(db)
-                            send_message(peer_id, "✅ Приветственный автоответ на «Начать/Старт» обновлён!", get_admin_keyboard(db["is_active"]))
-                            continue
-                        elif state == "edit_helper":
-                            db["helper_text"] = text
-                            save_data(db)
-                            send_message(peer_id, "✅ Текст раздела «Как купить / Правила» обновлён!", get_admin_keyboard(db["is_active"]))
-                            continue
-                        elif state == "broadcast":
-                            count = 0
-                            for uid in db["users"]:
-                                try:
-                                    send_message(uid, text)
-                                    count += 1
-                                except:
-                                    pass
-                            send_message(peer_id, f"✅ Рассылка отправлена {count} пользователям в ЛС!", get_admin_keyboard(db["is_active"]))
-                            continue
-
-                    # Админ-панель (только в ЛС)
-                    if is_admin:
-                        if text == "⚙️ Админ-панель" or text_lower in ["админ", "миню", "меню"]:
-                            send_message(peer_id, f"⚙️ АДМИН-ПАНЕЛЬ NEBULA STUDIO\n\n👥 Юзеров в ЛС: {len(db['users'])}\n💬 Чатов с автопиаром: {len(db['chats'])}\n⚡ Статус пиара: {'🟢 Включен' if db['is_active'] else '🔴 Выключен'}", get_admin_keyboard(db["is_active"]))
-                            continue
-                        elif text == "🔴 Остановить автопиар":
-                            db["is_active"] = False
-                            save_data(db)
-                            send_message(peer_id, "🔴 Автопиар остановлен.", get_admin_keyboard(False))
-                            continue
-                        elif text == "🟢 Запустить автопиар":
-                            db["is_active"] = True
-                            save_data(db)
-                            send_message(peer_id, "🟢 Автопиар запущен!", get_admin_keyboard(True))
-                            continue
-                        elif text == "📊 Статистика":
-                            send_message(peer_id, f"📊 Статистика:\n• Активных чатов: {len(db['chats'])}\n• Пользователей в ЛС: {len(db['users'])}\n• Автопиар (30 сек): {'Вкл' if db['is_active'] else 'Выкл'}", get_admin_keyboard(db["is_active"]))
-                            continue
-                        elif text == "✏️ Текст автопиара":
-                            admin_states[from_id] = "edit_piar"
-                            send_message(peer_id, "✍️ Отправь новый текст для автопиара и прайса (или напиши 'Отмена'):")
-                            continue
-                        elif text == "✏️ Автоответ в ЛС":
-                            admin_states[from_id] = "edit_welcome"
-                            send_message(peer_id, "✍️ Отправь новый текст автоответа на «Начать / Старт» (или 'Отмена'):")
-                            continue
-                        elif text == "✏️ Текст хелпера":
-                            admin_states[from_id] = "edit_helper"
-                            send_message(peer_id, "✍️ Отправь новый текст для кнопки «Как купить / Правила» (или 'Отмена'):")
-                            continue
-                        elif text == "📢 Рассылка в ЛС":
-                            admin_states[from_id] = "broadcast"
-                            send_message(peer_id, "📣 Напиши текст для массовой рассылки всем в ЛС (или 'Отмена'):")
-                            continue
-                        elif text == "🛒 Меню покупателя":
-                            send_message(peer_id, db["welcome_text"], get_user_keyboard(is_admin=True))
-                            continue
-
-                    # Кнопки и автоответ в ЛС для покупателей
-                    if text == "🛒 Прайс-лист / Товары":
-                        send_message(peer_id, db["piar_text"], get_user_keyboard(is_admin))
-                    elif text == "❓ Как купить / Правила":
-                        send_message(peer_id, db["helper_text"], get_user_keyboard(is_admin))
-                    elif text == "📩 Вызвать администратора":
-                        send_message(peer_id, "📩 Запрос отправлен администраторам! Ожидайте ответа в этом чате.\n\n⚠️ Напоминаем: работаем строго по 100% предоплате перед началом работы.", get_user_keyboard(is_admin))
-                        for admin_id in db["admins"]:
-                            send_message(admin_id, f"🚨 КЛИЕНТ ВЫЗЫВАЕТ АДМИНА!\n\n👤 Покупатель: vk.com/id{peer_id}\n💬 Зайди в сообщения сообщества vk.com/nebulastudio0, чтобы ответить ему!")
-                    else:
-                        # Срабатывает только в ЛС (на "Начать", "Старт" и т.д.)
-                        send_message(peer_id, db["welcome_text"], get_user_keyboard(is_admin))
-
-        except Exception as e:
-            print(f"Ошибка в цикле: {e}")
-            time.sleep(3)
-
-if __name__ == "__main__":
-    main()
+                    # ================= ЖЁСТКИЙ ФИЛЬТР БЕСЕД =================
+                    # Если сообщение из беседы (peer_id > 20000
