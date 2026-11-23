@@ -13,7 +13,7 @@ def index():
     return "NEBULA STUDIO Bot is running 24/7!"
 
 # ================= НАСТРОЙКИ =================
-VK_TOKEN = "vk1.a.tjIJ7CqnErXpn4Vq_nzBKQBQMjb_NcJf4kiFaJZTZoEsJ4ZCz8eBu5Z8669wHETxyU6MQ_CwhnHTQfnHLMOG6kWYjzbwap1DhP98OOs8Pj2qurp0hu7u0mDR1Ub4vdGXAq-jcKbaqp9cawQ4QZ_qnSvwwIoXZn1YEcK_c7vAkwPnpW6fc6fd936xb6vF7NAt4yw76BK5X9HHnt3CS6EfxA"
+VK_TOKEN = "vk1.a.fjX9EcojO7pEwJeAEGN12cNaLeMa_ZBVQe7lCYGItYvYol9riGMnPH23o8agdPnMdemLzaTA1obXDddr0SQto3WkP_mV96FB3hjuIXrXXd6GwcvV6qY64eEXeuV-CbcI1uPyH1mvgJse-dGz96poEY12kXV1o2RLMVsblR4sYQq8B6jUYGymLDYxrFtaZt4cogHZlHgZXQLWUrBgkSzltw"
 MAIN_ADMINS = [897082738, 1108641965]
 
 DATA_FILE = "data.json"
